@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Video Downloader - Multi-Platform
 
 Ứng dụng tải video hỗ trợ YouTube, TikTok, Douyin và nhiều nền tảng khác, được phát triển trên 3 nền tảng: Python, C# (WPF), và JavaScript (Browser Extension).
@@ -74,3 +75,7 @@ MIT License
 
 Created with ❤️ for easy video downloading
 
+=======
+# MaMaOne
+Tool
+>>>>>>> cc574513d287c2e191b7d02168fb0c3d4be8eac3
