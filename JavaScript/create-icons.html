@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Extension Icons</title>
+</head>
+<body>
+    <h2>Video Downloader Extension Icons Generator</h2>
+    <p>Click buttons below to download icons</p>
+    
+    <canvas id="canvas16" width="16" height="16" style="border: 1px solid #ccc; margin: 10px;"></canvas>
+    <button onclick="downloadIcon(16)">Download icon16.png</button><br><br>
+    
+    <canvas id="canvas48" width="48" height="48" style="border: 1px solid #ccc; margin: 10px;"></canvas>
+    <button onclick="downloadIcon(48)">Download icon48.png</button><br><br>
+    
+    <canvas id="canvas128" width="128" height="128" style="border: 1px solid #ccc; margin: 10px;"></canvas>
+    <button onclick="downloadIcon(128)">Download icon128.png</button>
+
+    <script>
+        function drawIcon(canvas, size) {
+            const ctx = canvas.getContext('2d');
+            
+            // Background - Green gradient
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#4CAF50');
+            gradient.addColorStop(1, '#45a049');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+            
+            // Draw download arrow
+            ctx.strokeStyle = 'white';
+            ctx.fillStyle = 'white';
+            ctx.lineWidth = size / 8;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            // Arrow line
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const arrowSize = size / 3;
+            
+            // Vertical line
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY - arrowSize / 2);
+            ctx.lineTo(centerX, centerY + arrowSize / 2);
+            ctx.stroke();
+            
+            // Arrow head (down)
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY + arrowSize / 2);
+            ctx.lineTo(centerX - arrowSize / 3, centerY + arrowSize / 4);
+            ctx.moveTo(centerX, centerY + arrowSize / 2);
+            ctx.lineTo(centerX + arrowSize / 3, centerY + arrowSize / 4);
+            ctx.stroke();
+            
+            // Base line
+            ctx.beginPath();
+            ctx.moveTo(centerX - arrowSize / 2, centerY + arrowSize / 2);
+            ctx.lineTo(centerX + arrowSize / 2, centerY + arrowSize / 2);
+            ctx.stroke();
+        }
+        
+        function downloadIcon(size) {
+            const canvas = document.getElementById(`canvas${size}`);
+            drawIcon(canvas, size);
+            
+            canvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `icon${size}.png`;
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+        
+        // Draw previews
+        window.onload = () => {
+            drawIcon(document.getElementById('canvas16'), 16);
+            drawIcon(document.getElementById('canvas48'), 48);
+            drawIcon(document.getElementById('canvas128'), 128);
+        };
+    </script>
+</body>
+</html>
+

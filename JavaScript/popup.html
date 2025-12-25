@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Downloader</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            width: 500px;
+            min-height: 300px;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #4CAF50;
+        }
+        .form-label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .btn-download {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            border: none;
+            padding: 12px 24px;
+            font-weight: 600;
+            font-size: 16px;
+            box-shadow: 0 4px 6px rgba(76, 175, 80, 0.3);
+            transition: all 0.3s;
+        }
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(76, 175, 80, 0.4);
+        }
+        .btn-download:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .progress-container {
+            margin-top: 15px;
+        }
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+        .status-text {
+            font-weight: 600;
+            color: #4CAF50;
+        }
+        .input-group-text {
+            background-color: #f8f9fa;
+            border-right: none;
+        }
+        .form-control:focus {
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 0.2rem rgba(76, 175, 80, 0.25);
+        }
+        .alert {
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <h4 class="header">
+            <i class="bi bi-download"></i> Video Downloader
+        </h4>
+
+        <!-- Line 1: Link Input -->
+        <div class="mb-3">
+            <label for="videoLink" class="form-label">
+                <i class="bi bi-link-45deg"></i> Link video
+            </label>
+            <div class="input-group">
+                <span class="input-group-text">
+                    <i class="bi bi-play-circle"></i>
+                </span>
+                <input type="text" class="form-control" id="videoLink" 
+                       placeholder="Dán link YouTube, TikTok, Douyin...">
+            </div>
+        </div>
+
+        <!-- Line 2: Save Location -->
+        <div class="mb-3">
+            <label for="savePath" class="form-label">
+                <i class="bi bi-folder"></i> Lưu tại
+            </label>
+            <div class="input-group">
+                <span class="input-group-text">
+                    <i class="bi bi-folder2-open"></i>
+                </span>
+                <input type="text" class="form-control" id="savePath" 
+                       placeholder="Chọn thư mục lưu..." readonly>
+                <button class="btn btn-outline-secondary" type="button" id="browseBtn">
+                    <i class="bi bi-folder-plus"></i> Chọn...
+                </button>
+            </div>
+        </div>
+
+        <!-- Line 3: Download Button and Progress -->
+        <div class="mb-3">
+            <button class="btn btn-download w-100" id="downloadBtn">
+                <i class="bi bi-download"></i> Tải Video
+            </button>
+            
+            <div class="progress-container" id="progressContainer" style="display: none;">
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="status-text" id="statusText">Sẵn sàng</span>
+                    <span id="percentText">0%</span>
+                </div>
+                <div class="progress" style="height: 25px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                         role="progressbar" id="progressBar" 
+                         style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                    </div>
+                </div>
+                <div class="progress-info">
+                    <span id="speedText"></span>
+                    <span id="timeText"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alert Messages -->
+        <div id="alertContainer"></div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="popup.js"></script>
+</body>
+</html>
+
