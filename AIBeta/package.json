@@ -1,0 +1,39 @@
+{
+  "name": "aibeta-tiktok-auto",
+  "version": "1.0.0",
+  "description": "Hệ thống tự động cào trend TikTok → dịch → ghép video → đăng lên TikTok",
+  "main": "pipeline.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node scheduler.js",
+    "run-now": "node pipeline.js",
+    "run-hashtag": "node pipeline.js --hashtags",
+    "scheduler": "node scheduler.js --run-now",
+    "test-scraper": "node -e \"require('./src/scraper/tiktokScraper').scrapeTrendingVideos().then(v=>console.log(JSON.stringify(v,null,2)))\"",
+    "test-script": "node -e \"require('./src/translator/scriptWriter').generateVietnameseScript({id:'test',description:'5 Python tips #python #coding',author:'test',hashtags:['#python']}).then(s=>console.log(JSON.stringify(s,null,2)))\"",
+    "install-browser": "npx playwright install chromium",
+    "install-ytdlp": "pip install yt-dlp edge-tts"
+  },
+  "keywords": [
+    "tiktok",
+    "automation",
+    "ai",
+    "content-creation"
+  ],
+  "author": "AIBeta",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "axios": "^1.7.9",
+    "chalk": "^4.1.2",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "fluent-ffmpeg": "^2.1.3",
+    "node-cron": "^3.0.3",
+    "ora": "^5.4.1",
+    "playwright": "^1.49.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "ws": "^8.21.3"
+  }
+}

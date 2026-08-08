@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TikTok Auto AIBeta — Control Center</title>
+
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            dark: {
+              bg: '#090d16',
+              card: '#111827',
+              border: '#1f2937',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- ApexCharts CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+  <!-- SweetAlert2 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- Animate.css CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+
+  <style>
+    /* Custom Scrollbar for Log Terminal */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0b0f19; }
+    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+
+    .glass-card {
+      background: rgba(17, 24, 39, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-card:hover {
+      border-color: rgba(99, 102, 241, 0.25);
+    }
+    
+    .glow-purple {
+      box-shadow: 0 0 25px -5px rgba(99, 102, 241, 0.4);
+    }
+    .glow-cyan {
+      box-shadow: 0 0 25px -5px rgba(6, 182, 212, 0.4);
+    }
+    
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .pulse-dot {
+      animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+  </style>
+</head>
+
+<body class="bg-[#090d16] text-slate-100 font-sans min-h-screen selection:bg-indigo-500 selection:text-white pb-12">
+  
+  <!-- Background Glow Orbs -->
+  <div class="fixed top-0 left-1/4 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
+  <div class="fixed bottom-0 right-1/4 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
+
+    <!-- HEADER BAR -->
+    <header class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-lg glow-purple">
+          <i data-lucide="bot" class="w-7 h-7"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-bold tracking-tight text-white">TikTok Auto <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">AIBeta</span></h1>
+            <span class="px-2.5 py-0.5 text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-full">v1.0 Pro</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">Hệ Thống Tự Động Tạo Kịch Bản AI & Đăng Video TikTok</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 w-full md:w-auto justify-end">
+        <!-- Status Indicator Pill -->
+        <div id="system-status-pill" class="flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs font-medium">
+          <span class="w-2.5 h-2.5 rounded-full bg-slate-500 pulse-dot" id="status-dot"></span>
+          <span id="status-text" class="text-slate-300">Đang kết nối...</span>
+        </div>
+
+        <!-- Run Trigger Button -->
+        <button id="btn-run-pipeline" class="relative group px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-semibold text-sm shadow-lg glow-purple transition-all duration-300 hover:scale-[1.02] active:scale-95 flex items-center gap-2">
+          <i data-lucide="play" class="w-4 h-4 fill-white"></i>
+          <span>CHẠY PIPELINE NGAY</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- NAVIGATION TABS -->
+    <nav class="flex space-x-2 bg-slate-900/60 p-1.5 rounded-xl border border-slate-800/80 backdrop-blur-md overflow-x-auto">
+      <button class="nav-tab active flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 shadow-sm whitespace-nowrap" data-tab="dashboard">
+        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+        <span>Tổng Quan</span>
+      </button>
+
+      <button class="nav-tab flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 whitespace-nowrap" data-tab="progress">
+        <i data-lucide="activity" class="w-4 h-4 text-cyan-400"></i>
+        <span>Tiến Trình Realtime & Danh Sách</span>
+        <span id="live-progress-badge" class="px-2 py-0.5 text-xs bg-cyan-500/20 text-cyan-300 rounded-full font-bold">0%</span>
+      </button>
+
+      <button class="nav-tab flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 whitespace-nowrap" data-tab="videos">
+        <i data-lucide="film" class="w-4 h-4"></i>
+        <span>Kho Video Output</span>
+        <span id="video-count-badge" class="ml-1 px-2 py-0.5 text-xs bg-indigo-500/20 text-indigo-300 rounded-full font-bold">0</span>
+      </button>
+
+      <button class="nav-tab flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 whitespace-nowrap" data-tab="config">
+        <i data-lucide="sliders" class="w-4 h-4"></i>
+        <span>Cấu Hình API Keys</span>
+      </button>
+    </nav>
+
+    <!-- TAB 1: DASHBOARD MAIN -->
+    <main id="tab-dashboard" class="tab-content space-y-6">
+      
+      <!-- STATS CARDS GRID -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Stat 1 -->
+        <div class="glass-card rounded-2xl p-5 flex items-center gap-4 border border-slate-800/80 hover:border-slate-700 transition-all">
+          <div class="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+            <i data-lucide="video" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <p class="text-xs font-medium text-slate-400">Video Hôm Nay</p>
+            <h3 class="text-2xl font-bold text-white tracking-tight mt-0.5" id="stat-total">0</h3>
+          </div>
+        </div>
+
+        <!-- Stat 2 -->
+        <div class="glass-card rounded-2xl p-5 flex items-center gap-4 border border-slate-800/80 hover:border-slate-700 transition-all">
+          <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+            <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <p class="text-xs font-medium text-slate-400">Thành Công</p>
+            <h3 class="text-2xl font-bold text-emerald-400 tracking-tight mt-0.5" id="stat-success">0</h3>
+          </div>
+        </div>
+
+        <!-- Stat 3 -->
+        <div class="glass-card rounded-2xl p-5 flex items-center gap-4 border border-slate-800/80 hover:border-slate-700 transition-all">
+          <div class="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+            <i data-lucide="x-circle" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <p class="text-xs font-medium text-slate-400">Thất Bại / Lỗi</p>
+            <h3 class="text-2xl font-bold text-rose-400 tracking-tight mt-0.5" id="stat-failed">0</h3>
+          </div>
+        </div>
+
+        <!-- Stat 4 -->
+        <div class="glass-card rounded-2xl p-5 flex items-center gap-4 border border-slate-800/80 hover:border-slate-700 transition-all">
+          <div class="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+            <i data-lucide="clock" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <p class="text-xs font-medium text-slate-400">Lịch Đăng Tự Động</p>
+            <h3 class="text-sm font-semibold text-cyan-300 tracking-tight mt-1">08:00 | 12:00 | 18:00</h3>
+          </div>
+        </div>
+      </div>
+
+      <!-- ACTIVE PIPELINE PROGRESS BANNER -->
+      <div id="pipeline-progress-card" class="hidden glass-card rounded-2xl p-5 border border-cyan-500/30 bg-cyan-950/20 space-y-3 animate__animated animate__fadeIn">
+        <div class="flex items-center justify-between text-sm">
+          <div class="flex items-center gap-3 font-semibold text-cyan-300">
+            <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
+            <span id="current-step-label">Đang chạy pipeline...</span>
+          </div>
+          <span id="progress-percent" class="font-mono text-xs font-bold text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-md border border-cyan-500/20">0%</span>
+        </div>
+        <div class="w-full bg-slate-800/80 rounded-full h-2.5 overflow-hidden p-0.5 border border-slate-700/50">
+          <div id="progress-bar-fill" class="bg-gradient-to-r from-indigo-500 to-cyan-400 h-full rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- LIVE ANALYTICS & LOGS GRID -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Chart Widget (Left 1 col) -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-800/80 flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <i data-lucide="bar-chart-3" class="w-4 h-4 text-indigo-400"></i>
+              Hiệu Suất Xuất Video
+            </h3>
+            <span class="text-xs text-slate-400">7 ngày gần nhất</span>
+          </div>
+          <div id="analytics-chart" class="w-full h-64"></div>
+        </div>
+
+        <!-- Terminal Logs Window (Right 2 cols) -->
+        <div class="lg:col-span-2 glass-card rounded-2xl overflow-hidden border border-slate-800/80 flex flex-col">
+          <div class="bg-slate-900/90 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-rose-500/80 inline-block"></span>
+              <span class="w-3 h-3 rounded-full bg-amber-500/80 inline-block"></span>
+              <span class="w-3 h-3 rounded-full bg-emerald-500/80 inline-block"></span>
+              <span class="font-mono text-xs text-slate-400 ml-2 font-medium">Terminal Logs (Real-time WebSockets)</span>
+            </div>
+
+            <div class="flex items-center gap-4 text-xs text-slate-400">
+              <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-200">
+                <input type="checkbox" id="chk-autoscroll" checked class="rounded border-slate-700 bg-slate-800 text-indigo-500 focus:ring-0">
+                Tự cuộn
+              </label>
+              <button id="btn-clear-logs" class="hover:text-rose-400 flex items-center gap-1 transition-colors">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                Xóa logs
+              </button>
+            </div>
+          </div>
+
+          <!-- Log Output Area -->
+          <div id="terminal-logs" class="h-80 overflow-y-auto p-4 font-mono text-xs space-y-1.5 bg-[#070a11]">
+            <div class="text-indigo-400">[INFO] [Dashboard] Giao diện Web Dashboard đã sẵn sàng. Bấm "CHẠY PIPELINE NGAY" để bắt đầu!</div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 2: TIẾN TRÌNH REALTIME & DANH SÁCH -->
+    <section id="tab-progress" class="tab-content hidden space-y-6">
+      <!-- Active Video & Pipeline Overview Banner -->
+      <div class="glass-card rounded-2xl p-6 border border-cyan-500/30 bg-gradient-to-r from-slate-900 via-slate-900/90 to-indigo-950/40 space-y-5">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="px-2.5 py-0.5 text-xs font-bold bg-cyan-500/20 text-cyan-300 rounded-full border border-cyan-500/30 flex items-center gap-1">
+                <span class="w-2 h-2 rounded-full bg-cyan-400 pulse-dot"></span>
+                <span id="prg-queue-status">Đang Xử Lý Video 1/3</span>
+              </span>
+              <span id="prg-video-id" class="text-xs font-mono text-slate-400">ID: --</span>
+            </div>
+            <h2 id="prg-video-title" class="text-lg font-bold text-white tracking-tight">Chưa Có Video Nào Đang Chạy...</h2>
+            <p id="prg-video-author" class="text-xs text-slate-400">Tác giả gốc: -- | Mô tả: N/A</p>
+          </div>
+
+          <!-- Countdown Timers Card -->
+          <div class="flex items-center gap-4 bg-slate-950/80 p-3 rounded-xl border border-slate-800">
+            <div class="text-center px-3 border-r border-slate-800">
+              <span class="text-[11px] font-medium text-slate-400 block">Thời Gian Đã Chạy</span>
+              <span id="prg-timer-elapsed" class="text-lg font-mono font-bold text-white">00:00</span>
+            </div>
+            <div class="text-center px-3">
+              <span class="text-[11px] font-medium text-slate-400 block">Dự Kiến Còn Lại (ETA)</span>
+              <span id="prg-timer-eta" class="text-lg font-mono font-bold text-cyan-400">00:00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Overall Progress Bar -->
+        <div class="space-y-2">
+          <div class="flex justify-between text-xs font-semibold">
+            <span class="text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="gauge" class="w-4 h-4 text-cyan-400"></i>
+              Tiến Trình Tổng Thể Pipeline (Xử Lý Tuần Tự Từng Video)
+            </span>
+            <span id="prg-overall-percent" class="font-mono text-cyan-400 font-bold">0%</span>
+          </div>
+          <div class="w-full bg-slate-800/90 rounded-full h-3 overflow-hidden p-0.5 border border-slate-700/60">
+            <div id="prg-overall-bar" class="bg-gradient-to-r from-indigo-500 via-cyan-400 to-emerald-400 h-full rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5-STEP DETAILED PROGRESS TRACKER GRID -->
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <!-- Step 1 Card -->
+        <div id="step-card-1" class="glass-card rounded-xl p-4 border border-slate-800 flex flex-col justify-between space-y-3 opacity-60 transition-all">
+          <div class="flex items-center justify-between">
+            <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-500/30">1</span>
+            <span id="step-badge-1" class="text-[10px] font-bold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">Chờ</span>
+          </div>
+          <div>
+            <h4 class="text-xs font-bold text-white">Cào Trend TikTok</h4>
+            <p id="step-desc-1" class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">Quét Apify API theo hashtag...</p>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div id="step-bar-1" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Step 2 Card -->
+        <div id="step-card-2" class="glass-card rounded-xl p-4 border border-slate-800 flex flex-col justify-between space-y-3 opacity-60 transition-all">
+          <div class="flex items-center justify-between">
+            <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-500/30">2</span>
+            <span id="step-badge-2" class="text-[10px] font-bold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">Chờ</span>
+          </div>
+          <div>
+            <h4 class="text-xs font-bold text-white">Tải Video (yt-dlp)</h4>
+            <p id="step-desc-2" class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">Tải mp4 gốc không watermark...</p>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div id="step-bar-2" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Step 3 Card -->
+        <div id="step-card-3" class="glass-card rounded-xl p-4 border border-slate-800 flex flex-col justify-between space-y-3 opacity-60 transition-all">
+          <div class="flex items-center justify-between">
+            <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-500/30">3</span>
+            <span id="step-badge-3" class="text-[10px] font-bold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">Chờ</span>
+          </div>
+          <div>
+            <h4 class="text-xs font-bold text-white">Gemini AI Dịch</h4>
+            <p id="step-desc-3" class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">Rewrite kịch bản sang Tiếng Việt...</p>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div id="step-bar-3" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Step 4 Card -->
+        <div id="step-card-4" class="glass-card rounded-xl p-4 border border-slate-800 flex flex-col justify-between space-y-3 opacity-60 transition-all">
+          <div class="flex items-center justify-between">
+            <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-500/30">4</span>
+            <span id="step-badge-4" class="text-[10px] font-bold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">Chờ</span>
+          </div>
+          <div>
+            <h4 class="text-xs font-bold text-white">Voice & Subtitle</h4>
+            <p id="step-desc-4" class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">Edge-TTS & FFmpeg render...</p>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div id="step-bar-4" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Step 5 Card -->
+        <div id="step-card-5" class="glass-card rounded-xl p-4 border border-slate-800 flex flex-col justify-between space-y-3 opacity-60 transition-all">
+          <div class="flex items-center justify-between">
+            <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-500/30">5</span>
+            <span id="step-badge-5" class="text-[10px] font-bold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">Chờ</span>
+          </div>
+          <div>
+            <h4 class="text-xs font-bold text-white">Đăng TikTok</h4>
+            <p id="step-desc-5" class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">Playwright browser auto upload...</p>
+          </div>
+          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+            <div id="step-bar-5" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DANH SÁCH VIDEO CÀO ĐƯỢC (SCRAPED QUEUE TABLE) -->
+      <div class="glass-card rounded-2xl p-5 border border-slate-800 space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2">
+            <i data-lucide="list-filter" class="w-5 h-5 text-cyan-400"></i>
+            <h3 class="text-sm font-bold text-white">Danh Sách Video Cào Được (Scraped Queue)</h3>
+          </div>
+          <span class="text-xs text-slate-400 font-mono">Tự động cập nhật từ Apify API</span>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-900/80 text-slate-400 font-semibold border-b border-slate-800 uppercase text-[10px] tracking-wider">
+              <tr>
+                <th class="p-3">#</th>
+                <th class="p-3">Video ID / Author</th>
+                <th class="p-3">Mô Tả Gốc</th>
+                <th class="p-3 text-right">Views Gốc</th>
+                <th class="p-3 text-center">Trạng Thái Xử Lý</th>
+              </tr>
+            </thead>
+            <tbody id="scraped-queue-tbody" class="divide-y divide-slate-800/60 font-mono">
+              <tr>
+                <td colspan="5" class="p-4 text-center text-slate-500 font-sans">
+                  Chưa có dữ liệu lượt cào. Bấm "CHẠY PIPELINE NGAY" để cào video trending!
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- AI SCRIPT PREVIEW & LIST CARD -->
+      <div class="glass-card rounded-2xl p-6 border border-slate-800 space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h3 class="text-sm font-bold text-white flex items-center gap-2">
+            <i data-lucide="file-text" class="w-4 h-4 text-purple-400"></i>
+            Danh Sách Kịch Bản AI Tiếng Việt Đã Dịch (Gemini AI)
+          </h3>
+          <span id="script-status-tag" class="text-xs text-slate-400 font-mono">Đang chờ AI...</span>
+        </div>
+        
+        <div id="script-preview-container" class="space-y-3">
+          <div class="bg-slate-950/80 p-4 rounded-xl border border-slate-800/80 space-y-2">
+            <h4 id="script-preview-title" class="text-sm font-bold text-indigo-300">Tiêu đề: (Đang tạo...)</h4>
+            <p id="script-preview-body" class="text-xs text-slate-300 leading-relaxed font-sans italic">Kịch bản chi tiết sẽ hiển thị tại đây ngay khi Gemini AI hoàn thành bước dịch và rewrite...</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: KHO VIDEO OUTPUT -->
+    <section id="tab-videos" class="tab-content hidden space-y-4">
+      <div class="flex items-center justify-between bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <i data-lucide="film" class="w-5 h-5 text-indigo-400"></i>
+            Kho Video Đã Render Sẵn Đăng
+          </h2>
+          <p class="text-xs text-slate-400">Tự động lưu tại thư mục <code>workspace/output/</code></p>
+        </div>
+        <button id="btn-refresh-videos" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center gap-2">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          Làm mới
+        </button>
+      </div>
+
+      <!-- Video Grid Container -->
+      <div id="video-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- TAB 4: CONFIG FORM -->
+    <section id="tab-config" class="tab-content hidden">
+      <div class="glass-card rounded-2xl p-6 sm:p-8 border border-slate-800/80 max-w-3xl mx-auto space-y-6">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <i data-lucide="key-round" class="w-5 h-5 text-indigo-400"></i>
+            Cấu Hình Hệ Thống & API Keys
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">Cấu hình dưới đây được đồng bộ tự động với file <code>.env</code> dự án.</p>
+        </div>
+
+        <form id="form-config" class="space-y-5">
+          <!-- Apify Token -->
+          <div class="space-y-1.5">
+            <label for="input-apify" class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="shield-check" class="w-4 h-4 text-cyan-400"></i>
+              Apify API Token (Cào TikTok Trend)
+            </label>
+            <input type="password" id="input-apify" placeholder="apify_api_..." class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition">
+            <p class="text-[11px] text-slate-500">Lấy miễn phí $5 credit/tháng tại: <a href="https://console.apify.com/settings/integrations" target="_blank" class="text-cyan-400 hover:underline">console.apify.com</a></p>
+          </div>
+
+          <!-- Gemini Key -->
+          <div class="space-y-1.5">
+            <label for="input-gemini" class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="sparkles" class="w-4 h-4 text-indigo-400"></i>
+              Google Gemini API Key (AI Dịch & Kịch Bản)
+            </label>
+            <input type="password" id="input-gemini" placeholder="AIzaSy..." class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition">
+            <p class="text-[11px] text-slate-500">Lấy miễn phí tại: <a href="https://aistudio.google.com/apikey" target="_blank" class="text-cyan-400 hover:underline">aistudio.google.com</a></p>
+          </div>
+
+          <!-- Hashtags & Max Videos -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              <label for="input-hashtags" class="text-xs font-semibold text-slate-300">Hashtags Cào Trend</label>
+              <input type="text" id="input-hashtags" placeholder="coding,programming,aitools" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 transition">
+            </div>
+
+            <div class="space-y-1.5">
+              <label for="input-max-videos" class="text-xs font-semibold text-slate-300">Số Video/Lần Chạy</label>
+              <input type="number" id="input-max-videos" min="1" max="20" value="3" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 transition">
+            </div>
+          </div>
+
+          <!-- Min Views & Voice -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              <label for="input-min-views" class="text-xs font-semibold text-slate-300">Min View Lọc Video</label>
+              <input type="number" id="input-min-views" value="50000" step="10000" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 transition">
+            </div>
+
+            <div class="space-y-1.5">
+              <label for="input-voice" class="text-xs font-semibold text-slate-300">Giọng Đọc AI (Edge-TTS)</label>
+              <select id="input-voice" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 transition">
+                <option value="vi-VN-HoaiMyNeural">Nữ: Hoài My (vi-VN-HoaiMyNeural)</option>
+                <option value="vi-VN-NamMinhNeural">Nam: Nam Minh (vi-VN-NamMinhNeural)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="pt-2 flex items-center gap-4">
+            <button type="submit" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-semibold text-sm hover:opacity-90 transition flex items-center gap-2 shadow-lg glow-purple">
+              <i data-lucide="save" class="w-4 h-4"></i>
+              Lưu Cấu Hình
+            </button>
+            <span id="save-status" class="text-xs font-medium text-emerald-400"></span>
+          </div>
+        </form>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- App Script -->
+  <script src="app.js"></script>
+</body>
+</html>
