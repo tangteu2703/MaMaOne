@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Render Studio - Hệ Thống Tạo Video AI Theo Kịch Bản</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              500: '#22c55e',
+              600: '#16a34a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Animate.css -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
+
+  <!-- BACKGROUND DECORATIVE GLOW -->
+  <div class="fixed top-0 left-1/4 w-96 h-96 bg-amber-600/10 rounded-full blur-3xl pointer-events-none"></div>
+  <div class="fixed bottom-0 right-1/4 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+  <!-- SPACIOUS FULL-WIDTH CONTAINER -->
+  <div class="max-w-[1650px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6 pb-16">
+
+    <!-- HEADER BAR WITH PAGE NAVIGATION MENU -->
+    <header class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl border border-slate-800/80">
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-amber-500 to-indigo-500 flex items-center justify-center text-slate-950 font-bold shadow-lg">
+          <i data-lucide="sparkles" class="w-7 h-7"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-2xl font-bold tracking-tight text-white">AI Render Studio <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-indigo-400">Pro</span></h1>
+            <span class="px-3 py-0.5 text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full">v1.0 Pro</span>
+          </div>
+          <p class="text-sm text-slate-400 mt-0.5">Tự Động Sinh Kịch Bản, Chuỗi Ảnh Giai Đoạn Khóa Góc Máy & Dựng Video HD</p>
+        </div>
+      </div>
+
+      <!-- MAIN PAGE MENU SWITCHER -->
+      <nav class="flex items-center gap-2 bg-slate-900/80 p-1.5 rounded-xl border border-slate-800">
+        <a href="/index.html" class="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+          <span>TikTok Auto System</span>
+        </a>
+        <a href="/RenderAI.html" class="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/30 shadow-sm">
+          <i data-lucide="wand-2" class="w-4 h-4 text-amber-400"></i>
+          <span>AI Render Studio</span>
+        </a>
+      </nav>
+
+      <!-- System Status Pill -->
+      <div class="flex items-center gap-3">
+        <div id="system-status-pill" class="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs font-medium">
+          <span class="w-2.5 h-2.5 rounded-full bg-slate-500 pulse-dot" id="status-dot"></span>
+          <span id="status-text" class="text-slate-300">Đang kết nối...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- TAB SUB-HEADER BAR -->
+    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-slate-900/90 p-2 rounded-2xl border border-slate-800 shadow-xl gap-3">
+      <div class="flex items-center gap-2">
+        <button id="tab-btn-studio" type="button" class="px-6 py-3 rounded-xl text-sm font-bold bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-lg transition flex items-center gap-2">
+          <i data-lucide="sparkles" class="w-4 h-4"></i>
+          <span>🎬 Render Studio Engine</span>
+        </button>
+        <button id="tab-btn-library" type="button" class="px-6 py-3 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/80 transition flex items-center gap-2">
+          <i data-lucide="film" class="w-4 h-4 text-indigo-400"></i>
+          <span>📁 Danh Sách Video AI</span>
+          <span id="tab-library-count" class="px-2 py-0.5 text-xs font-mono rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">0</span>
+        </button>
+      </div>
+
+      <!-- Controls for Library View -->
+      <div id="tab-library-controls" class="hidden flex items-center gap-3 px-2">
+        <div class="flex items-center gap-2">
+          <label for="history-sort-order" class="text-xs font-semibold text-slate-400">Sắp xếp:</label>
+          <select id="history-sort-order" class="px-3.5 py-2 rounded-xl bg-slate-950 border border-amber-500/30 text-xs text-amber-300 font-bold focus:outline-none">
+            <option value="desc" selected>📅 Mới Nhất Trước (Date Desc)</option>
+            <option value="asc">📅 Cũ Nhất Trước (Date Asc)</option>
+          </select>
+        </div>
+        <input id="history-search-input" type="text" placeholder="🔍 Tìm tiêu đề / hashtag..." class="px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-48 sm:w-64">
+      </div>
+    </div>
+
+    <!-- VIEW TAB 1: RENDER STUDIO ENGINE SECTION -->
+    <div id="view-tab-studio" class="space-y-6">
+      
+      <!-- TOP SECTION: CONTROL PANEL & INPUT FORM -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Left 2 Cols: Form Setup & Presets -->
+      <div class="lg:col-span-2 glass-card rounded-2xl p-6 border border-slate-800/80 space-y-5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">
+            <i data-lucide="sliders-horizontal" class="w-5 h-5 text-amber-400"></i>
+            Thiết Lập Kịch Bản Render Video
+          </h3>
+
+          <!-- Presets -->
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs text-slate-400 font-medium">Mẫu kịch bản:</span>
+            <button class="btn-preset px-3 py-1.5 rounded-lg text-xs bg-slate-800 hover:bg-amber-500/20 text-slate-200 hover:text-amber-300 border border-slate-700 transition font-medium" data-preset="Xây dựng ngôi nhà biệt thự 2 tầng hiện đại từ nền đất trống">🏡 Xây nhà 2 tầng</button>
+            <button class="btn-preset px-3 py-1.5 rounded-lg text-xs bg-slate-800 hover:bg-amber-500/20 text-slate-200 hover:text-amber-300 border border-slate-700 transition font-medium" data-preset="Quá trình lắp ghép mô hình LEGO siêu xe Lamborghini từ chi tiết nhỏ">🧩 Lắp LEGO xe</button>
+            <button class="btn-preset px-3 py-1.5 rounded-lg text-xs bg-slate-800 hover:bg-amber-500/20 text-slate-200 hover:text-amber-300 border border-slate-700 transition font-medium" data-preset="Phục chế xe máy cổ hỏng từ xác xe cũ thành xe mới lộng lẫy">🛠️ Phục chế xe cổ</button>
+          </div>
+        </div>
+
+        <form id="form-render-ai" class="space-y-4">
+          <!-- Topic Input -->
+          <div class="space-y-1.5">
+            <label for="ai-topic" class="text-sm font-semibold text-slate-300">Chủ Đề / Ý Tưởng Video</label>
+            <textarea id="ai-topic" rows="3" placeholder="Nhập kịch bản hoặc chủ đề video của bạn..." class="w-full px-4 py-3 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition placeholder:text-slate-600 resize-none">Xây dựng ngôi nhà biệt thự 2 tầng hiện đại từ nền đất trống</textarea>
+          </div>
+
+          <!-- Options Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              <label for="ai-step-count" class="text-xs font-semibold text-slate-300">Số Bước Thi Công (Khung Ảnh)</label>
+              <select id="ai-step-count" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition">
+                <option value="3">3 Giai Đoạn</option>
+                <option value="5" selected>5 Giai Đoạn (Khuyên dùng)</option>
+                <option value="7">7 Giai Đoạn</option>
+              </select>
+            </div>
+
+            <div class="space-y-1.5">
+              <label for="ai-aspect-ratio" class="text-xs font-semibold text-slate-300">Tỉ Lệ Khung Hình</label>
+              <select id="ai-aspect-ratio" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition">
+                <option value="vertical" selected>9:16 Dọc (TikTok/Shorts/Reels)</option>
+                <option value="horizontal">16:9 Ngang (YouTube)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Real AI Motion Engine Indicator -->
+          <div class="pt-1 flex items-center justify-between bg-slate-900/90 p-3 rounded-xl border border-amber-500/30">
+            <div class="flex items-center gap-2">
+              <i data-lucide="video" class="w-5 h-5 text-amber-400"></i>
+              <div>
+                <p class="text-xs font-bold text-amber-300">Real AI Motion Engine (I2V Frame Chaining)</p>
+                <p class="text-[10px] text-slate-400">Tạo chuỗi video chuyển động AI 0đ nối liền mạch theo khung hình cuối</p>
+              </div>
+            </div>
+            <span id="comfy-status-badge" class="text-[11px] px-3 py-1 rounded-full font-mono bg-slate-800 text-slate-400 border border-slate-700">ComfyUI: Đang kết nối...</span>
+          </div>
+
+          <!-- Submit Button -->
+          <button type="submit" id="btn-run-render-ai" class="w-full py-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-slate-950 hover:text-white font-bold text-base shadow-xl transition-all duration-300 hover:scale-[1.005] active:scale-95 flex items-center justify-center gap-2 mt-2">
+            <i data-lucide="sparkles" class="w-5 h-5"></i>
+            <span>TẠO AI MOTION VIDEO CHUYỂN ĐỘNG THỰC</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Right 1 Col: Live Terminal Logs -->
+      <div id="terminal-log-box" class="glass-card rounded-2xl p-6 border border-slate-800/80 space-y-4 flex flex-col justify-between transition-all duration-300">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2">
+            <i data-lucide="terminal" class="w-5 h-5 text-emerald-400"></i>
+            <h3 class="text-base font-bold text-white">Nhật Ký Tiến Trình (Terminal Logs)</h3>
+          </div>
+          <div class="flex items-center gap-3">
+            <button id="btn-toggle-log-size" type="button" class="px-2.5 py-1 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition flex items-center gap-1">
+              <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+              <span>Phóng To</span>
+            </button>
+            <span id="log-status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-dot"></span>
+          </div>
+        </div>
+
+        <div id="ai-terminal-mini" class="h-[420px] overflow-y-auto p-5 font-mono text-sm bg-slate-950 rounded-xl border border-slate-800/90 text-slate-200 space-y-2 leading-relaxed shadow-inner">
+          <div class="text-slate-500">[INFO] Sẵn sàng kích hoạt Real AI Motion Video Engine.</div>
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- ========================================== -->
+    <!-- PIPELINE LINE-BY-LINE WORKFLOW SECTION -->
+    <!-- ========================================== -->
+    <div class="space-y-6 pt-2">
+      
+      <!-- LINE 1: QUY TRÌNH KỊCH BẢN & RENDER CHUỖI ẢNH GIAI ĐOẠN -->
+      <div class="glass-card rounded-2xl p-6 border border-amber-500/30 bg-slate-900/60 space-y-5 shadow-2xl">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+          <div class="flex items-center gap-3">
+            <span class="px-3 py-1 rounded-xl bg-amber-500/20 text-amber-300 font-bold text-xs border border-amber-500/30">LINE 1</span>
+            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="image" class="w-5 h-5 text-amber-400"></i>
+              1. Gemini AI Kịch Bản & Render Chuỗi Ảnh Phân Đoạn Gối Đầu
+            </h3>
+          </div>
+          <span id="ai-img-count-badge" class="px-3.5 py-1 text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded-full font-mono">0/5 Ảnh HD</span>
+        </div>
+
+        <!-- Line 1 Progress Bar -->
+        <div id="line1-progress-container" class="space-y-1.5 hidden">
+          <div class="flex justify-between text-xs text-amber-300 font-medium">
+            <span id="line1-status-label">Đang sinh ảnh...</span>
+            <span id="line1-percent-label">0%</span>
+          </div>
+          <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+            <div id="line1-progress-fill" class="bg-gradient-to-r from-amber-500 to-emerald-400 h-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Gallery Grid (Spacious Cards) -->
+        <div id="ai-gallery-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div class="col-span-full py-12 text-center text-slate-500 text-xs">
+            <i data-lucide="sparkles" class="w-10 h-10 mx-auto mb-3 opacity-30 text-amber-400"></i>
+            <p class="font-semibold text-slate-400 text-sm">Chưa có ảnh nào được tạo</p>
+            <p class="mt-1">Nhập kịch bản ở trên và bấm "TẠO AI MOTION VIDEO CHUYỂN ĐỘNG THỰC" để bắt đầu!</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- LINE 2: QUY TRÌNH RENDER GIỌNG KỂ THUYẾT MINH (TTS AUDIO) -->
+      <div id="line2-box" class="glass-card rounded-2xl p-6 border border-cyan-500/30 bg-slate-900/60 space-y-5 shadow-2xl">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+          <div class="flex items-center gap-3">
+            <span class="px-3 py-1 rounded-xl bg-cyan-500/20 text-cyan-300 font-bold text-xs border border-cyan-500/30">LINE 2</span>
+            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="mic" class="w-5 h-5 text-cyan-400"></i>
+              2. Render Giọng Kể Thuyết Minh Theo Đúng Phân Đoạn (TTS Audio)
+            </h3>
+          </div>
+          <span id="line2-status-badge" class="px-3.5 py-1 text-xs font-bold bg-slate-800 text-slate-400 rounded-full">Đang chờ Line 1...</span>
+        </div>
+
+        <!-- Line 2 Content Area (Split per Step + Master Audio) -->
+        <div id="line2-content" class="space-y-4">
+          <!-- Step-by-Step Narration Grid (1-to-1 matching Line 1 Images) -->
+          <div>
+            <span class="text-xs text-slate-400 font-semibold uppercase tracking-wider block mb-2">Lời Thuyết Minh Phân Chia Theo Từng Khung Ảnh (Khớp 1:1 với Line 1):</span>
+            <div id="line2-steps-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div class="col-span-full py-6 text-center text-slate-500 text-xs italic">
+                Đang chờ kịch bản phân đoạn từ Line 1...
+              </div>
+            </div>
+          </div>
+
+          <!-- Master Combined Script & Audio Player -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center bg-slate-950 p-4 rounded-xl border border-slate-800">
+            <div class="md:col-span-2 space-y-1">
+              <span class="text-xs text-cyan-400 font-bold uppercase tracking-wider">Tổng Hợp Lời Thoại Toàn Bài Thuyết Minh (Full Audio Script):</span>
+              <p id="line2-script-text" class="text-slate-300 text-xs leading-relaxed max-h-24 overflow-y-auto italic">
+                Chưa có kịch bản tổng hợp...
+              </p>
+            </div>
+            <div class="space-y-1 border-t md:border-t-0 md:border-l border-slate-800 pt-2 md:pt-0 md:pl-4">
+              <span class="text-xs text-slate-400 font-medium uppercase tracking-wider">Audio Thuyết Minh Hoàn Chỉnh (MP3):</span>
+              <audio id="line2-audio-player" controls class="w-full h-9 mt-1"></audio>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LINE 3: QUY TRÌNH DỰNG VIDEO CHUYỂN ĐỘNG AI REAL MOTION & EXPORT -->
+      <div id="line3-box" class="glass-card rounded-2xl p-6 border border-emerald-500/30 bg-slate-900/60 space-y-5 shadow-2xl">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+          <div class="flex items-center gap-3">
+            <span class="px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 font-bold text-xs border border-emerald-500/30">LINE 3</span>
+            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="film" class="w-5 h-5 text-emerald-400"></i>
+              3. AI Motion Video Engine — Ghép Chuỗi Clip Chuyển Động AI & Sound (Export MP4)
+            </h3>
+          </div>
+          <span id="line3-status-badge" class="px-3.5 py-1 text-xs font-bold bg-slate-800 text-slate-400 rounded-full">Đang chờ Line 2...</span>
+        </div>
+
+        <!-- Line 3 Result Area (Gói gọn hoàn toàn bên trong Line 3 Card) -->
+        <div id="line3-content" class="bg-slate-950 p-5 rounded-xl border border-slate-800/90 shadow-inner">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+            <!-- Video Preview Frame -->
+            <div class="aspect-[9/16] max-h-[360px] mx-auto bg-black rounded-xl overflow-hidden shadow-2xl border border-slate-800 w-full max-w-[220px]">
+              <video id="ai-video-player" controls class="w-full h-full object-contain"></video>
+            </div>
+
+            <!-- Title & Caption Info -->
+            <div class="md:col-span-2 space-y-4 text-sm text-slate-300">
+              <div class="space-y-1">
+                <span class="text-emerald-400 font-bold uppercase tracking-wider text-xs flex items-center gap-1.5">
+                  <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
+                  Tiêu Đề Video AI Hoàn Chỉnh:
+                </span>
+                <h4 id="ai-res-title" class="font-bold text-white text-lg leading-snug">Chưa có video render</h4>
+              </div>
+
+              <div class="space-y-1 bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+                <span class="text-indigo-400 font-bold uppercase tracking-wider text-[11px] block">Caption & Hashtags Chuẩn TikTok:</span>
+                <p id="ai-res-caption" class="text-slate-200 font-mono text-xs leading-relaxed italic"></p>
+              </div>
+
+              <div class="pt-2">
+                <a id="ai-video-download" href="#" download class="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-sm transition shadow-lg hover:scale-105 active:scale-95">
+                  <i data-lucide="download" class="w-5 h-5"></i>
+                  <span>TẢI VIDEO MP4 VỀ MÁY</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div> <!-- END VIEW TAB 1: STUDIO ENGINE -->
+
+    <!-- VIEW TAB 2: DANH SÁCH VIDEO AI LIBRARY (ORDER BY DATE) -->
+    <div id="view-tab-library" class="hidden space-y-6 animate__animated animate__fadeIn">
+      <div class="glass-card rounded-2xl p-6 border border-slate-800/80 bg-slate-900/80 space-y-5 shadow-2xl">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div class="flex items-center gap-3">
+            <span class="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shadow-md">
+              <i data-lucide="folder-video" class="w-6 h-6"></i>
+            </span>
+            <div>
+              <h3 class="text-lg font-bold text-white">Danh Sách Video AI Đã Dựng (Order By Date)</h3>
+              <p class="text-xs text-slate-400 mt-0.5">Tệp video MP4 lưu tại: <code class="text-amber-300 bg-slate-950 px-2 py-0.5 rounded font-mono border border-slate-800">workspace/output/</code></p>
+            </div>
+          </div>
+          <button id="btn-refresh-history" type="button" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition flex items-center gap-2 shadow">
+            <i data-lucide="refresh-cw" class="w-4 h-4 text-amber-400"></i>
+            <span>Làm Mới Danh Sách</span>
+          </button>
+        </div>
+
+        <!-- Video History Cards Grid -->
+        <div id="ai-video-history-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div class="col-span-full py-12 text-center text-slate-500 text-xs italic">
+            Chưa có video nào trong lịch sử render...
+          </div>
+        </div>
+      </div>
+    </div> <!-- END VIEW TAB 2: LIBRARY -->
+
+  </div>
+
+  <!-- Client Script for RenderAI page -->
+  <script src="renderAI.js"></script>
+</body>
+</html>

@@ -133,7 +133,13 @@ function handleWSMessage(msg) {
       break;
 
     case 'progress':
-      updateRealtimeProgress(msg.data);
+      updateRealtimeProgress(msg.data.data);
+      break;
+    case 'history_update':
+      updateHistoryTable(msg.data);
+      break;
+    case 'ai_video_created':
+      handleAIVideoResult(msg.data);
       break;
 
     case 'config_updated':

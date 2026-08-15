@@ -13,7 +13,7 @@ module.exports = {
 
   gemini: {
     apiKey: process.env.GEMINI_API_KEY,
-    model: 'gemini-1.5-flash',
+    model: process.env.GEMINI_MODEL || 'gemini-1.5-flash-latest',
   },
 
   telegram: {
@@ -42,10 +42,12 @@ module.exports = {
     audio: path.join(__dirname, '../workspace/audio'),
     output: path.join(__dirname, '../workspace/output'),
     logs: path.join(__dirname, '../logs'),
-    // FFmpeg: dùng bản đã tải sẵn bởi Playwright
+    // FFmpeg: ưu tiên dùng bản full trong bin/ffmpeg.exe vừa tải
     ffmpeg: process.env.FFMPEG_PATH
-      || 'C:\\Users\\MV250392\\AppData\\Local\\ms-playwright\\ffmpeg-1011\\ffmpeg-win64.exe',
-    // Python tools (full path vì không có trong PATH hệ thống)
+      || (require('fs').existsSync(path.resolve(__dirname, '../bin/ffmpeg.exe'))
+          ? path.resolve(__dirname, '../bin/ffmpeg.exe')
+          : 'C:\\Users\\MV250392\\AppData\\Local\\ms-playwright\\ffmpeg-1011\\ffmpeg-win64.exe'),
+    // Python tools
     ytdlp: process.env.YTDLP_PATH
       || 'C:\\Users\\MV250392\\AppData\\Local\\Python\\pythoncore-3.14-64\\Scripts\\yt-dlp.exe',
     edgeTts: process.env.EDGETTS_PATH

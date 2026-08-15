@@ -11,6 +11,8 @@ const { WebSocketServer } = require('ws');
 const logger = require('./src/logger');
 const config = require('./config/config');
 const { runPipeline } = require('./pipeline');
+const { generateAIVideoPipeline } = require('./src/aiGenerator/constructionGenerator');
+const { generateAIVideoMotionPipeline, checkComfyUIStatus } = require('./src/aiGenerator/comfyUIMotionGenerator');
 
 const app = express();
 const server = http.createServer(app);
@@ -195,7 +197,87 @@ app.post('/api/run', async (req, res) => {
   }, 500);
 });
 
-// 5. Get Processed Videos
+// 4.5. AI Video Generator Trigger (0đ - Construction & Storytelling)
+// API kiểm tra trạng thái ComfyUI Local Server
+app.get('/api/ai-generator/comfy-status', async (req, res) => {
+  const status = await checkComfyUIStatus();
+  res.json(status);
+});
+
+app.post('/api/ai-generator/generate', async (req, res) => {
+  if (systemState.isRunning) {
+    return res.status(400).json({ success: false, message: 'Hệ thống đang thực hiện pipeline khác!' });
+  }
+
+  const { topic, stepCount, isVertical, renderMode } = req.body || {};
+
+  systemState.isRunning = true;
+  systemState.currentStep = 'Đang khởi tạo Video AI...';
+  systemState.stats.lastRunTime = new Date().toLocaleTimeString('vi-VN');
+  broadcast('state_change', systemState);
+
+  res.json({ success: true, message: 'Đã kích hoạt tạo Video AI!' });
+
+  setTimeout(async () => {
+    try {
+      logger.info('Dashboard', `Bắt đầu tạo AI Motion Video chủ đề: "${topic || 'Phục chế xe cổ'}"`);
+      const options = {
+        topic: topic || 'Phục chế xe máy cổ hỏng từ xác xe cũ thành xe mới lộng lẫy',
+        stepCount: parseInt(stepCount) || 5,
+        isVertical: isVertical !== false,
+      };
+
+      const progressCb = (progressData) => {
+        activeProgress = progressData;
+        systemState.currentStep = progressData.stepName;
+        systemState.stepNumber = progressData.step;
+        broadcast('progress', progressData);
+      };
+
+      const stepImgCb = (stepImageData) => {
+        broadcast('ai_image_step_created', stepImageData);
+      };
+
+      const result = await generateAIVideoMotionPipeline(options, progressCb, stepImgCb);
+
+      systemState.stats.processedToday += 1;
+      systemState.stats.successToday += 1;
+
+      systemState.videoHistory.unshift({
+        id: result.videoId,
+        time: new Date().toLocaleTimeString('vi-VN') + ' ' + new Date().toLocaleDateString('vi-VN'),
+        status: 'success',
+        steps: { script: '✅', images: '✅', voice: '✅', video: '✅' },
+        title: result.title,
+        script: result.script,
+        caption: result.caption,
+        videoFile: result.videoUrl,
+      });
+
+      broadcast('ai_video_created', result);
+
+    } catch (err) {
+      logger.error('Dashboard', `Lỗi tạo Video AI: ${err.message}`);
+      systemState.stats.failedToday += 1;
+    } finally {
+      systemState.isRunning = false;
+      systemState.currentStep = 'Idle';
+      broadcast('state_change', systemState);
+      broadcast('history_update', systemState.videoHistory);
+    }
+  }, 500);
+});
+
+// 5. Get AI Video History List with Hashtags
+app.get('/api/ai-generator/history', (req, res) => {
+  res.json({
+    success: true,
+    outputDirectory: config.paths.output,
+    history: systemState.videoHistory
+  });
+});
+
+// 6. Get Processed Videos
 app.get('/api/videos', (req, res) => {
   try {
     const outputDir = config.paths.output;
@@ -213,7 +295,7 @@ app.get('/api/videos', (req, res) => {
           };
         });
     }
-    res.json({ success: true, videos: files });
+    res.json({ success: true, videos: files, history: systemState.videoHistory });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

@@ -9,3 +9,5 @@ logs/
 config/tiktok-session.json
 *.log
 .DS_Store
+AIBeta/bin/
+bin/

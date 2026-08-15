@@ -27,13 +27,80 @@ async function generateVoice(videoId, script) {
   const result = await tryEdgeTTS(videoId, script, outputPath);
   if (result) return result;
 
-  // Phương án 2: edge-tts với Python script custom
-  const result2 = await tryEdgeTTSWithCertifi(videoId, script, outputPath);
-  if (result2) return result2;
+  // Phương án 3: Google Translate TTS Fallback qua Node.js (Bỏ qua SSL cert)
+  logger.info(MODULE, 'Thử fallback sang Google TTS Node.js...');
+  const result3 = await tryGoogleTTS(videoId, script, outputPath);
+  if (result3) return result3;
 
-  // Fallback: Tạo audio WAV silent bằng pure Node.js (không cần FFmpeg)
-  logger.warn(MODULE, 'TTS thất bại (SSL blocked), tạo audio silent placeholder...');
+  // Fallback: Tạo audio WAV silent bằng pure Node.js
+  logger.warn(MODULE, 'TTS hoàn toàn thất bại, tạo audio silent placeholder...');
   return createSilentWav(outputPath, 60);
+}
+
+/**
+ * Google Translate TTS Node.js Fallback
+ */
+async function tryGoogleTTS(videoId, script, outputPath) {
+  const https = require('https');
+  return new Promise((resolve) => {
+    try {
+      // Cắt script thành các câu dưới 200 ký tự cho Google TTS
+      const sentences = script.match(/[^.!?]+[.!?]+/g) || [script];
+      const chunks = [];
+      let current = '';
+      for (const s of sentences) {
+        if ((current + s).length < 180) {
+          current += ' ' + s;
+        } else {
+          if (current.trim()) chunks.push(current.trim());
+          current = s;
+        }
+      }
+      if (current.trim()) chunks.push(current.trim());
+      if (chunks.length === 0) chunks.push(script.substring(0, 180));
+
+      const file = fs.createWriteStream(outputPath);
+      let chunkIndex = 0;
+
+      function downloadNextChunk() {
+        if (chunkIndex >= chunks.length) {
+          file.close(() => {
+            if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 500) {
+              logger.success(MODULE, `Google Translate TTS thành công! (${(fs.statSync(outputPath).size / 1024).toFixed(0)} KB)`);
+              resolve(outputPath);
+            } else {
+              resolve(null);
+            }
+          });
+          return;
+        }
+
+        const q = encodeURIComponent(chunks[chunkIndex]);
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${q}&tl=vi&client=tw-ob`;
+
+        https.get(url, { rejectUnauthorized: false }, (res) => {
+          if (res.statusCode === 200) {
+            res.pipe(file, { end: false });
+            res.on('end', () => {
+              chunkIndex++;
+              setTimeout(downloadNextChunk, 200);
+            });
+          } else {
+            logger.warn(MODULE, `Google TTS chunk ${chunkIndex} status: ${res.statusCode}`);
+            chunkIndex++;
+            setTimeout(downloadNextChunk, 200);
+          }
+        }).on('error', (e) => {
+          logger.warn(MODULE, `Google TTS err: ${e.message}`);
+          resolve(null);
+        });
+      }
+
+      downloadNextChunk();
+    } catch (e) {
+      resolve(null);
+    }
+  });
 }
 
 /**
