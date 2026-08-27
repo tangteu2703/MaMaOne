@@ -38,74 +38,96 @@ async function generateVietnameseScript(video, transcript = null) {
     ? `Transcript video gốc:\n${transcript}`
     : `Mô tả video gốc:\n${video.description}`;
 
-  const prompt = `Bạn là chuyên gia tạo nội dung TikTok Việt Nam trong lĩnh vực công nghệ/lập trình.
+  const prompt = `Bạn là chuyên gia sáng tạo nội dung TikTok Việt Nam hàng đầu.
 
 ${sourceContent}
 
 Hashtags gốc: ${video.hashtags?.join(' ') || ''}
 
 Nhiệm vụ của bạn:
-1. Phân tích nội dung video gốc (Tiếng Anh)
-2. Tạo kịch bản HOÀN TOÀN MỚI bằng Tiếng Việt (KHÔNG dịch từng từ, hãy viết lại theo phong cách riêng)
-3. Phong cách: Ngắn gọn, hấp dẫn, phù hợp TikTok 60-90 giây
-4. Thêm góc nhìn thực tế từ developer Việt Nam
+1. Phân tích chính xác tình huống, cảm xúc và nhân vật trong video gốc.
+2. Tạo kịch bản Tiếng Việt hấp dẫn, BÁM SÁT 100% VÀO ĐÚNG CHỦ ĐỀ GỐC (Ví dụ: Em bé/Baby -> Thuyết minh lồng tiếng em bé hài hước cute; Funny -> Câu thoại troll nhí nhảnh; Gym -> Động lực thể thao; Code -> Mẹo lập trình).
+3. ĐỘ DÀI KỊCH BẢN CỰC KỲ NẮNG GỌN:
+   - Chỉ viết khoảng 25 - 45 từ Tiếng Việt (khoảng 1-3 câu ngắn).
+   - Tuyệt đối KHÔNG viết dài lê thê lan man. Cần cô đọng, tự nhiên, nhịp điệu nhanh để đọc vừa khít với thời lượng video ngắn TikTok.
+4. Ngôn từ gần gũi, dí dỏm, phong cách GenZ TikTok Việt Nam.
 
 Trả về JSON format CHÍNH XÁC như sau (không thêm markdown code blocks):
 {
-  "script": "Kịch bản đọc to cho video (60-90 giây, khoảng 150-200 từ Tiếng Việt)",
-  "caption": "Caption TikTok hấp dẫn dưới 150 ký tự Tiếng Việt",
+  "script": "Kịch bản đọc thoại Tiếng Việt ngắn gọn (25-45 từ, nhịp điệu nhanh dí dỏm)",
+  "caption": "Caption TikTok cuốn hút dưới 100 ký tự Tiếng Việt",
   "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3", "#hashtag4", "#hashtag5"],
-  "title": "Tiêu đề ngắn gọn cho video (5-8 từ)"
+  "title": "Tiêu đề tiếng Việt ngắn gọn cho video (3-6 từ)"
 }`;
 
-  try {
-    const model = ai.getGenerativeModel({ model: config.gemini.model });
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+  const modelsToTry = [config.gemini.model, 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.5-flash-lite', 'gemini-2.0-flash'];
 
-    // Parse JSON từ response
-    let parsed;
+  for (const modelName of modelsToTry) {
     try {
-      // Xử lý nếu Gemini bọc trong ```json ... ```
-      const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      parsed = JSON.parse(clean);
-    } catch {
-      logger.warn(MODULE, 'Không parse được JSON, dùng kịch bản mẫu');
-      return getMockScript(video);
+      logger.info(MODULE, `Đang gọi Gemini AI model: ${modelName}...`);
+      const model = ai.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      const text = result.response.text().trim();
+
+      // Parse JSON từ response
+      let parsed;
+      try {
+        const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        parsed = JSON.parse(clean);
+      } catch {
+        logger.warn(MODULE, 'Không parse được JSON từ response AI');
+        continue;
+      }
+
+      logger.success(MODULE, `✅ Kịch bản AI tạo xong (${modelName}): "${parsed.title}"`);
+      logger.info(MODULE, `Script preview: ${parsed.script.substring(0, 100)}...`);
+      return parsed;
+
+    } catch (error) {
+      logger.warn(MODULE, `Model ${modelName} báo lỗi: ${error.message.split('\n')[0]}`);
+      // Nếu là lỗi 429 -> chờ 3 giây rồi thử model tiếp theo
+      if (error.message.includes('429') || error.message.includes('Quota')) {
+        await new Promise(r => setTimeout(r, 3000));
+      }
     }
-
-    logger.success(MODULE, `Kịch bản tạo xong: "${parsed.title}"`);
-    logger.info(MODULE, `Script preview: ${parsed.script.substring(0, 100)}...`);
-
-    return parsed;
-  } catch (error) {
-    logger.error(MODULE, `Gemini API lỗi: ${error.message}`);
-    return getMockScript(video);
   }
+
+  logger.warn(MODULE, 'Tất cả model Gemini đều bận/hết quota, dùng kịch bản mẫu');
+  return getMockScript(video);
 }
 
 /**
  * Tạo kịch bản mẫu khi chưa có API key
  */
 function getMockScript(video) {
-  const mockScripts = [
-    {
-      title: '5 Mẹo Python Bạn Chưa Biết',
-      script: 'Chào mọi người! Hôm nay mình chia sẻ 5 mẹo Python siêu hữu ích mà ít developer biết đến. Thứ nhất, dùng f-string thay vì format để code ngắn hơn nhiều. Thứ hai, list comprehension giúp code của bạn pythonic hơn. Thứ ba, walrus operator trong Python 3.8 giúp gán và kiểm tra trong cùng một dòng. Thứ tư, dùng dataclass thay vì namedtuple cho code dễ đọc hơn. Và thứ năm, pathlib thay thế os.path giúp xử lý đường dẫn file dễ hơn nhiều. Thử ngay và cho mình biết bạn thích mẹo nào nhất nhé!',
-      caption: '5 mẹo Python mà 90% developer Việt chưa biết 🐍🔥 #python #coding #developer',
-      hashtags: ['#python', '#lậptrình', '#developer', '#coding', '#tips'],
-    },
-    {
-      title: 'AI Tool Tiết Kiệm 3 Giờ Mỗi Ngày',
-      script: 'Mình đã tìm ra công cụ AI này và nó thay đổi hoàn toàn cách mình làm việc. Thay vì mất cả buổi viết code từ đầu, giờ mình chỉ cần mô tả vấn đề và AI tự động sinh code. Không phải lúc nào cũng hoàn hảo nhưng tiết kiệm ít nhất 3 tiếng mỗi ngày. Mình sẽ làm video chi tiết về cách dùng hiệu quả nhất. Follow để không bỏ lỡ nhé!',
-      caption: 'Tool AI này giúp mình code nhanh gấp 3x 🤖💻 Chia sẻ anh em dev cùng biết!',
-      hashtags: ['#ai', '#developer', '#productivity', '#coding', '#aitools'],
-    },
-  ];
+  const desc = (video.description || video.title || '').toLowerCase();
+  const tags = (video.hashtags || []).join(' ').toLowerCase();
+  const fullText = desc + ' ' + tags;
 
-  const mock = mockScripts[Math.floor(Math.random() * mockScripts.length)];
-  logger.warn(MODULE, `⚠️  Dùng kịch bản MẪU: "${mock.title}" — Cấu hình GEMINI_API_KEY để dùng thật!`);
-  return mock;
+  if (fullText.includes('baby') || fullText.includes('kid') || fullText.includes('cute') || fullText.includes('child')) {
+    return {
+      title: 'Em Bé Siêu Đáng Yêu Dễ Thương',
+      script: 'Mọi người xem khoảnh khắc em bé đáng yêu này nè! Đúng là sự cute có thể chữa lành mọi mệt mỏi sau một ngày làm việc vất vả. Thả tim và follow để xem thêm nhiều clip đáng yêu mỗi ngày nhé!',
+      caption: 'Sự đáng yêu chữa lành mọi mệt mỏi 👶❤️ #baby #cute #family #viral',
+      hashtags: ['#baby', '#cute', '#family', '#beiu', '#tiktok'],
+    };
+  }
+
+  if (fullText.includes('prank') || fullText.includes('funny') || fullText.includes('lol') || fullText.includes('humor')) {
+    return {
+      title: 'Khoảnh Khắc Hài Hước Cười Bể Bụng',
+      script: 'Bó tay với tình huống hài hước này luôn mọi người ơi! Xem đi xem lại vẫn không nhặt được mồm. Ai thấy hài thì thả tim và tag đứa bạn thân vào coi chung nha!',
+      caption: 'Xem xong cười bể bụng luôn kkk 😂 #funny #humor #haihuoc #prank',
+      hashtags: ['#funny', '#haihuoc', '#prank', '#cuoi', '#viral'],
+    };
+  }
+
+  return {
+    title: video.description ? video.description.substring(0, 30) : 'Video Trend Hấp Dẫn',
+    script: `Khoảnh khắc siêu cuốn hút từ @${video.author || 'creator'}! Cùng xem và thảo luận phía dưới bình luận nhé. Đừng quên thả tim và đăng ký kênh!`,
+    caption: `${video.description ? video.description.substring(0, 80) : 'Video trend hot hôm nay!'} 🚀 #trending #viral`,
+    hashtags: video.hashtags && video.hashtags.length ? video.hashtags : ['#trending', '#viral', '#video'],
+  };
 }
 
 module.exports = { generateVietnameseScript };

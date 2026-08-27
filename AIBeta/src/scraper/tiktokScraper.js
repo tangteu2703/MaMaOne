@@ -38,13 +38,13 @@ async function scrapeTrendingVideos(hashtags = null, maxResults = null) {
 
       // Khởi động Apify Actor
       const runResponse = await axios.post(
-        `https://api.apify.com/v2/acts/${config.apify.tiktokScraperActorId}/runs`,
+        `https://api.apify.com/v2/acts/${config.apify.tiktokScraperActorId.replace('/', '~')}/runs`,
         {
+          // clockworks/tiktok-scraper input format
           hashtags: [hashtag],
           resultsPerPage: 20,
-          maxProfilesPerQuery: 1,
-          shouldDownloadVideos: false,
-          shouldDownloadCovers: false,
+          maxItems: 20,
+          proxyCountryCode: 'US',
         },
         {
           headers: {
@@ -52,6 +52,7 @@ async function scrapeTrendingVideos(hashtags = null, maxResults = null) {
             'Content-Type': 'application/json',
           },
           timeout: 30000,
+          httpsAgent,
         }
       );
 
@@ -118,11 +119,14 @@ async function waitForActorRun(runId, maxWait = 120000) {
  * Lọc video theo tiêu chí chất lượng
  */
 function filterVideos(videos, limit) {
+  const minViews = parseInt(config.pipeline.minViewCount || '0');
   return videos
     .filter(v => {
       const views = v.playCount || v.stats?.playCount || 0;
       const hasUrl = v.webVideoUrl || v.videoUrl || v.id;
-      return views >= config.pipeline.minViewCount && hasUrl;
+      // Nếu minViews = 0 -> Không lọc theo lượt view
+      const passesViewCheck = minViews === 0 || views >= minViews;
+      return passesViewCheck && hasUrl;
     })
     .sort((a, b) => {
       const viewsA = a.playCount || a.stats?.playCount || 0;

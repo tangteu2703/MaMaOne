@@ -1,6 +1,6 @@
 // ==========================================
-// PIPELINE ORCHESTRATOR
-// Điều phối toàn bộ pipeline từ A → Z + Realtime Progress Reporting
+// PIPELINE ORCHESTRATOR — STORY AUDIO MODE
+// Luồng: Đọc Truyện → Phân Tập → Cào Video Nền → TTS → Ghép Video
 // ==========================================
 require('dotenv').config();
 const path = require('path');
@@ -9,10 +9,10 @@ const fs = require('fs');
 const logger = require('./src/logger');
 const { scrapeTrendingVideos } = require('./src/scraper/tiktokScraper');
 const { downloadVideo } = require('./src/downloader/videoDownloader');
-const { generateVietnameseScript } = require('./src/translator/scriptWriter');
 const { generateVoice } = require('./src/tts/voiceGenerator');
 const { editVideo } = require('./src/editor/videoEditor');
 const { uploadToTikTok } = require('./src/uploader/tiktokUploader');
+const { loadAndSplitStory, generateEpisodeMetadata, saveEpisodesProgress, getEpisodesProgress, saveStoryToFile } = require('./src/story/storyReader');
 const config = require('./config/config');
 
 // Tạo thư mục làm việc nếu chưa có
@@ -22,6 +22,8 @@ function ensureDirectories() {
     config.paths.audio,
     config.paths.output,
     config.paths.logs,
+    config.paths.stories,
+    config.paths.music,
     path.dirname(config.tiktok.sessionFile),
   ];
   dirs.forEach(dir => {
@@ -36,171 +38,270 @@ function emitProgress(progressData) {
 }
 
 /**
- * Chạy pipeline cho 1 video
+ * Cào pool video nền từ TikTok (nhiều video để đủ độ dài)
+ * @param {number} numEpisodes - Số tập cần xử lý
+ * @param {string[]} hashtags - Hashtags cào
+ * @returns {Promise<string[]>} Danh sách đường dẫn file video đã tải
  */
-async function processVideo(video, index, total, pipelineStartTime) {
+async function scrapeAndDownloadBackgroundPool(numEpisodes, hashtags, pipelineStartTime) {
   const separator = '─'.repeat(50);
   console.log(`\n${separator}`);
-  logger.step(index, total, `Xử lý video: "${video.description.substring(0, 60)}..."`);
-  logger.info('Pipeline', `Author: @${video.author} | Views: ${video.viewCount?.toLocaleString()}`);
+  logger.step('A', 'D', `PHASE 1: Cào ${Math.max(numEpisodes * 2, 5)} video nền chủ đề: ${hashtags.slice(0, 3).join(', ')}...`);
+
+  emitProgress({
+    videoIndex: 0,
+    totalVideos: numEpisodes,
+    step: 0,
+    stepName: 'Cào Video Nền TikTok',
+    stepPercent: 10,
+    overallPercent: 3,
+    elapsedSeconds: 0,
+    etaSeconds: 300,
+    details: `Đang quét video nền chủ đề: ${hashtags.slice(0, 3).join(', ')}...`,
+  });
+
+  const maxToScrape = Math.max(numEpisodes * 2, 5);
+  const videos = await scrapeTrendingVideos(hashtags, maxToScrape);
+
+  if (!videos || videos.length === 0) {
+    throw new Error('Không cào được video nền nào!');
+  }
+
+  logger.success('Pipeline', `Tìm thấy ${videos.length} video nền ứng viên`);
+
+  // Tải video nền
+  const downloadedPaths = [];
+  for (let i = 0; i < videos.length; i++) {
+    const video = videos[i];
+    emitProgress({
+      videoIndex: i + 1,
+      totalVideos: videos.length,
+      step: 0,
+      stepName: 'Tải Video Nền',
+      stepPercent: Math.round(((i + 1) / videos.length) * 100),
+      overallPercent: Math.round(3 + (i / videos.length) * 12),
+      elapsedSeconds: Math.floor((Date.now() - pipelineStartTime) / 1000),
+      etaSeconds: 120,
+      details: `Đang tải video nền ${i + 1}/${videos.length}: @${video.author}...`,
+    });
+
+    try {
+      const videoPath = await downloadVideo(video);
+      downloadedPaths.push(videoPath);
+      logger.success('Pipeline', `✅ Tải xong video nền ${i + 1}: ${path.basename(videoPath)}`);
+    } catch (err) {
+      logger.warn('Pipeline', `⏭️  Bỏ qua video nền ${video.id}: ${err.message}`);
+    }
+  }
+
+  if (downloadedPaths.length === 0) {
+    throw new Error('Không tải được video nền nào!');
+  }
+
+  logger.success('Pipeline', `Pool video nền sẵn sàng: ${downloadedPaths.length} clip`);
+  return downloadedPaths;
+}
+
+/**
+ * Xử lý 1 tập truyện: TTS + Ghép Video
+ */
+async function processEpisode(episode, episodeMetadata, backgroundPool, index, totalEpisodes, pipelineStartTime) {
+  const separator = '─'.repeat(50);
+  console.log(`\n${separator}`);
+  logger.step(index, totalEpisodes, `Tập ${episode.index}: "${episodeMetadata.title}" (${episode.wordCount} từ ~${episode.estimatedDurationSeconds}s)`);
   console.log(separator);
 
+  const videoId = `ep${String(episode.index).padStart(3, '0')}`;
+
   const result = {
-    videoId: video.id,
+    episodeIndex: episode.index,
+    videoId,
     success: false,
     steps: {},
+    outputFile: '',
+    scriptBody: episode.content,
+    script: episode.content,
   };
 
-  const calculateProgress = (stepNum, stepName, stepPercent, details, scriptTitle = '') => {
+
+  const calcProgress = (step, stepName, stepPct, details) => {
     const elapsed = Math.floor((Date.now() - pipelineStartTime) / 1000);
-    // Ước tính 45 giây cho mỗi bước
-    const totalStepsInPipeline = total * 5;
-    const completedSteps = (index - 1) * 5 + (stepNum - 1) + (stepPercent / 100);
-    const overallPercent = Math.min(99, Math.round((completedSteps / totalStepsInPipeline) * 100));
-    
-    const avgTimePerStep = elapsed > 0 && completedSteps > 0 ? elapsed / completedSteps : 30;
-    const remainingSteps = totalStepsInPipeline - completedSteps;
-    const etaSeconds = Math.max(5, Math.round(remainingSteps * avgTimePerStep));
+    const totalSteps = totalEpisodes * 3; // 3 bước chính mỗi tập: TTS, Edit, Upload
+    const completed = (index - 1) * 3 + (step - 1) + (stepPct / 100);
+    const overall = Math.min(99, Math.round(15 + (completed / totalSteps) * 80)); // 15% đã dùng cho scrape/download
+    const avgTime = elapsed > 0 && completed > 0 ? elapsed / completed : 60;
+    const remaining = totalSteps - completed;
+
+    const bgClip = backgroundPool && backgroundPool.length > 0 ? backgroundPool[(index - 1) % backgroundPool.length] : null;
 
     return {
       videoIndex: index,
-      totalVideos: total,
-      videoId: video.id,
-      videoAuthor: video.author,
-      videoDesc: video.description,
-      scriptTitle: scriptTitle || video.scriptTitle || '',
-      step: stepNum,
-      stepName: stepName,
-      stepPercent: stepPercent,
-      overallPercent: overallPercent,
+      totalVideos: totalEpisodes,
+      videoId,
+      videoAuthor: `Tập ${episode.index}`,
+      videoDesc: episodeMetadata.title,
+      scriptTitle: episodeMetadata.title,
+      scriptBody: episode.content,
+      downloadFile: bgClip ? path.basename(bgClip) : undefined,
+      finalFile: result.outputFile || undefined,
+      step,
+      stepName,
+      stepPercent: stepPct,
+      overallPercent: overall,
       elapsedSeconds: elapsed,
-      etaSeconds: etaSeconds,
-      details: details,
+      etaSeconds: Math.max(5, Math.round(remaining * avgTime)),
+      details,
     };
   };
 
+
   try {
-    // BƯỚC 1: Tải video gốc
-    emitProgress(calculateProgress(1, 'Tải Video Gốc (No Watermark)', 20, 'Đang tải file mp4 từ TikTok...'));
-    logger.step('1', '5', 'Tải video gốc...');
-    const videoPath = await downloadVideo(video);
-    result.steps.download = '✅';
-    emitProgress(calculateProgress(1, 'Tải Video Gốc (No Watermark)', 100, `Tải xong: ${path.basename(videoPath)}`));
-    logger.success('Pipeline', `Tải xong: ${path.basename(videoPath)}`);
+    // BƯỚC 1: Tạo giọng đọc AI cho đoạn truyện
+    emitProgress(calcProgress(1, 'TTS Tạo Giọng Đọc Truyện', 20, `Đang chuyển ${episode.wordCount} từ thành giọng đọc AI...`));
+    logger.step('1', '3', `Tạo giọng đọc AI cho Tập ${episode.index}...`);
 
-    // BƯỚC 2: Tạo kịch bản AI Tiếng Việt
-    emitProgress(calculateProgress(2, 'Gemini AI Dịch & Viết Kịch Bản', 30, 'Đang phân tích kịch bản gốc và rewrite sang Tiếng Việt...'));
-    logger.step('2', '5', 'Tạo kịch bản AI Tiếng Việt...');
-    const scriptData = await generateVietnameseScript(video);
-    video.scriptTitle = scriptData.title;
-    result.steps.script = '✅';
-    emitProgress(calculateProgress(2, 'Gemini AI Dịch & Viết Kịch Bản', 100, `Kịch bản xong: "${scriptData.title}"`, scriptData.title));
-    logger.success('Pipeline', `Kịch bản: "${scriptData.title}"`);
-
-    // BƯỚC 3: Tạo giọng đọc AI (TTS)
-    emitProgress(calculateProgress(3, 'Edge-TTS Tạo Giọng Đọc AI', 40, `Đang chuyển kịch bản sang voiceover ${config.pipeline.voiceName}...`, scriptData.title));
-    logger.step('3', '5', 'Tạo giọng đọc AI Tiếng Việt...');
-    const audioPath = await generateVoice(video.id, scriptData.script);
+    const audioPath = await generateVoice(videoId, episode.content);
     result.steps.voice = '✅';
-    emitProgress(calculateProgress(3, 'Edge-TTS Tạo Giọng Đọc AI', 100, `Giọng đọc hoàn tất: ${path.basename(audioPath)}`, scriptData.title));
-    logger.success('Pipeline', `Giọng đọc: ${path.basename(audioPath)}`);
+    emitProgress(calcProgress(1, 'TTS Tạo Giọng Đọc Truyện', 100, `Giọng đọc hoàn tất: ${path.basename(audioPath)}`));
+    logger.success('Pipeline', `Giọng đọc Tập ${episode.index}: ${path.basename(audioPath)}`);
 
-    // BƯỚC 4: Ghép video FFmpeg
-    emitProgress(calculateProgress(4, 'FFmpeg Render Video & Subtitle', 50, 'Đang crop 9:16, ghép voice AI và burn-in phụ đề TikTok...', scriptData.title));
-    logger.step('4', '5', 'Ghép video + voice + subtitle...');
-    const finalVideoPath = await editVideo(video.id, videoPath, audioPath, scriptData);
+    // BƯỚC 2: Ghép video nền + voice + nhạc lofi + subtitle
+    emitProgress(calcProgress(2, 'FFmpeg Render Video Truyện', 30, 'Đang ghép video nền + giọng đọc + nhạc lofi + phụ đề...'));
+    logger.step('2', '3', `Ghép video Tập ${episode.index}...`);
+
+    // Chọn ngẫu nhiên các clip từ pool làm video nền cho tập này
+    const shuffledPool = [...backgroundPool].sort(() => Math.random() - 0.5);
+    const bgForThisEpisode = shuffledPool.slice(0, Math.min(3, shuffledPool.length));
+
+    const finalVideoPath = await editVideo(videoId, bgForThisEpisode, audioPath, {
+      title: episodeMetadata.title,
+      content: episode.content,
+      index: episode.index,
+    });
+
+    result.outputFile = path.basename(finalVideoPath);
     result.steps.edit = '✅';
-    emitProgress(calculateProgress(4, 'FFmpeg Render Video & Subtitle', 100, `Render xong: ${path.basename(finalVideoPath)}`, scriptData.title));
-    logger.success('Pipeline', `Video output: ${path.basename(finalVideoPath)}`);
+    emitProgress(calcProgress(2, 'FFmpeg Render Video Truyện', 100, `Render xong: ${result.outputFile}`));
+    logger.success('Pipeline', `Video Tập ${episode.index}: ${result.outputFile}`);
 
-    // BƯỚC 5: Playwright Auto Upload TikTok
-    emitProgress(calculateProgress(5, 'Playwright Đăng Video TikTok', 60, 'Mở trình duyệt Playwright, tải video, điền caption...', scriptData.title));
-    logger.step('5', '5', 'Đang đăng lên TikTok...');
-    const uploaded = await uploadToTikTok(finalVideoPath, scriptData);
-    result.steps.upload = uploaded ? '✅' : '⚠️';
+    // BƯỚC 3: Upload (tạm bỏ qua)
+    emitProgress(calcProgress(3, 'Hoàn Tất Tập Truyện', 100, `🎉 Tập ${episode.index} hoàn chỉnh! Lưu tại workspace/output/`));
+    logger.info('Pipeline', `⏭️  Tạm bỏ qua upload TikTok. Video Tập ${episode.index} đã hoàn thiện!`);
+    result.steps.upload = '⏭️ (Bỏ qua)';
+    result.success = true;
 
-    if (uploaded) {
-      emitProgress(calculateProgress(5, 'Playwright Đăng Video TikTok', 100, '🎉 Video đã được đăng lên TikTok thành công!', scriptData.title));
-      logger.success('Pipeline', `🎉 Video đã đăng lên TikTok!`);
-      result.success = true;
-    } else {
-      emitProgress(calculateProgress(5, 'Playwright Đăng Video TikTok', 100, '⚠️ Video lưu tại workspace/output (Upload chưa xong)', scriptData.title));
-      logger.warn('Pipeline', 'Upload thất bại, video vẫn được lưu tại output/');
-    }
-
-    // Delay giữa các video (30-60 giây)
-    if (index < total) {
-      const delay = Math.floor(Math.random() * 20000 + 20000);
-      emitProgress(calculateProgress(5, 'Nghỉ giữa các Video', 100, `Chờ ${Math.round(delay/1000)} giây trước video tiếp theo...`, scriptData.title));
-      logger.info('Pipeline', `Chờ ${delay / 1000}s trước video tiếp theo...`);
+    // Delay giữa các tập (15-30 giây)
+    if (index < totalEpisodes) {
+      const delay = Math.floor(Math.random() * 15000 + 15000);
+      logger.info('Pipeline', `Chờ ${delay / 1000}s trước tập tiếp theo...`);
       await new Promise(r => setTimeout(r, delay));
     }
 
   } catch (error) {
-    logger.error('Pipeline', `Lỗi xử lý video ${video.id}: ${error.message}`);
+    logger.error('Pipeline', `Lỗi Tập ${episode.index}: ${error.message}`);
     result.error = error.message;
-    emitProgress(calculateProgress(1, 'Lỗi Xử Lý Video', 0, `❌ Lỗi: ${error.message}`));
+    emitProgress(calcProgress(1, 'Lỗi Xử Lý Tập Truyện', 0, `❌ Lỗi: ${error.message}`));
   }
 
   return result;
 }
 
 /**
- * Chạy toàn bộ pipeline
+ * Chạy toàn bộ pipeline Story Audio
+ * @param {object} options - { storyFilePath, storyContent, storyTitle, hashtags, maxEpisodes, wordsPerEpisode, startEpisode }
  */
 async function runPipeline(options = {}) {
   const startTime = Date.now();
 
   console.log('\n' + '═'.repeat(60));
-  console.log('🤖  TIKTOK AUTO SYSTEM — Đang khởi động...');
+  console.log('📖  TRUYỆN AUDIO SYSTEM — Đang khởi động...');
   console.log('═'.repeat(60));
 
   ensureDirectories();
   const results = [];
 
   try {
+    // ━━━━ PHASE 0: Đọc và phân đoạn truyện ━━━━
+    logger.step('A', 'D', 'PHASE 0: Đọc và phân đoạn câu chuyện...');
+
+    let storyData;
+    if (options.storyContent) {
+      // Nội dung truyện được paste từ Dashboard UI
+      const title = options.storyTitle || config.story.activeStoryTitle;
+      const savedPath = saveStoryToFile(options.storyContent, title);
+      storyData = loadAndSplitStory(savedPath, options.wordsPerEpisode);
+    } else {
+      // Đọc từ file mặc định
+      storyData = loadAndSplitStory(options.storyFilePath || null, options.wordsPerEpisode);
+    }
+
+    // Lọc tập cần xử lý
+    let episodes = storyData.episodes;
+    let startEpisode = options.startEpisode || 1;
+    const maxEpisodes = options.maxEpisodes || config.pipeline.maxVideosPerRun;
+
+    if (startEpisode > storyData.totalEpisodes) {
+      logger.warn('Pipeline', `Tập bắt đầu (${startEpisode}) lớn hơn tổng số tập (${storyData.totalEpisodes}). Tự động đặt lại về Tập 1.`);
+      startEpisode = 1;
+    }
+
+    episodes = episodes
+      .filter(ep => ep.index >= startEpisode)
+      .slice(0, maxEpisodes);
+
+    if (episodes.length === 0) {
+      throw new Error(`Không tìm thấy tập truyện hợp lệ để xử lý! (Truyện có ${storyData.totalEpisodes} tập)`);
+    }
+
+
+    logger.success('Pipeline', `Sẽ xử lý ${episodes.length} tập (${startEpisode} → ${startEpisode + episodes.length - 1}) của truyện "${storyData.title}"`);
+
     emitProgress({
       videoIndex: 0,
-      totalVideos: options.maxVideos || config.pipeline.maxVideosPerRun,
+      totalVideos: episodes.length,
       step: 0,
-      stepName: 'Cào Video Trend TikTok',
-      stepPercent: 10,
-      overallPercent: 5,
+      stepName: 'Phân Đoạn Truyện',
+      stepPercent: 100,
+      overallPercent: 2,
       elapsedSeconds: 0,
-      etaSeconds: 180,
-      details: 'Đang kết nối Apify API quét video hot...'
+      etaSeconds: 600,
+      details: `"${storyData.title}" → ${storyData.totalEpisodes} tập | Xử lý: Tập ${startEpisode}→${startEpisode + episodes.length - 1}`,
     });
 
-    // PHASE 1: Cào trend
-    logger.step('A', 'D', 'PHASE 1: Cào video trending TikTok...');
-    const videos = await scrapeTrendingVideos(
-      options.hashtags || config.pipeline.hashtags,
-      options.maxVideos || config.pipeline.maxVideosPerRun
-    );
+    // ━━━━ PHASE 1: Cào & Tải video nền ━━━━
+    const hashtags = options.hashtags || config.pipeline.hashtags;
+    const backgroundPool = await scrapeAndDownloadBackgroundPool(episodes.length, hashtags, startTime);
 
-    if (!videos || videos.length === 0) {
-      logger.warn('Pipeline', 'Không tìm thấy video nào phù hợp!');
-      emitProgress({
-        videoIndex: 0,
-        totalVideos: 0,
-        step: 0,
-        stepName: 'Không tìm thấy video',
-        stepPercent: 0,
-        overallPercent: 0,
-        elapsedSeconds: Math.floor((Date.now() - startTime)/1000),
-        etaSeconds: 0,
-        details: 'Không tìm thấy video phù hợp tiêu chí'
-      });
-      return results;
+    // ━━━━ PHASE 2: Tạo metadata AI cho từng tập ━━━━
+    logger.step('B', 'D', 'PHASE 2: AI tạo metadata tiêu đề/caption cho từng tập...');
+    const episodeMetadataList = [];
+    for (const episode of episodes) {
+      const meta = await generateEpisodeMetadata(storyData.title, episode);
+      episodeMetadataList.push(meta);
+      logger.info('Pipeline', `Metadata Tập ${episode.index}: "${meta.title}"`);
     }
 
-    logger.success('Pipeline', `Tìm thấy ${videos.length} video đủ điều kiện`);
-
-    // PHASE 2-5: Xử lý từng video
-    for (let i = 0; i < videos.length; i++) {
-      const result = await processVideo(videos[i], i + 1, videos.length, startTime);
+    // ━━━━ PHASE 3-5: Xử lý từng tập ━━━━
+    logger.step('C', 'D', 'PHASE 3: Render từng tập truyện audio...');
+    for (let i = 0; i < episodes.length; i++) {
+      const result = await processEpisode(
+        episodes[i],
+        episodeMetadataList[i],
+        backgroundPool,
+        i + 1,
+        episodes.length,
+        startTime
+      );
       results.push(result);
     }
+
+    // Lưu progress
+    saveEpisodesProgress(storyData.title.replace(/\s+/g, '_'), {
+      storyTitle: storyData.title,
+      totalEpisodes: storyData.totalEpisodes,
+      lastProcessedEpisode: startEpisode + episodes.length - 1,
+      processedAt: new Date().toISOString(),
+    });
 
   } catch (error) {
     logger.error('Pipeline', `Lỗi pipeline: ${error.message}`);
@@ -210,21 +311,43 @@ async function runPipeline(options = {}) {
   const elapsed = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
   const successCount = results.filter(r => r.success).length;
 
-  emitProgress({
-    videoIndex: results.length,
-    totalVideos: results.length,
-    step: 5,
-    stepName: 'Hoàn Thành Pipeline',
-    stepPercent: 100,
-    overallPercent: 100,
-    elapsedSeconds: Math.floor((Date.now() - startTime)/1000),
-    etaSeconds: 0,
-    details: `✅ Đã xử lý ${successCount}/${results.length} video thành công!`
-  });
+  console.log('\n' + '═'.repeat(60));
+  if (results.length > 0) {
+    logger.success('Pipeline', `🎉 Hoàn tất! ${successCount}/${results.length} tập trong ${elapsed} phút`);
+    console.log('═'.repeat(60));
+
+    emitProgress({
+      videoIndex: results.length,
+      totalVideos: results.length,
+      step: 4,
+      stepName: 'Hoàn Thành Tất Cả Tập',
+      stepPercent: 100,
+      overallPercent: 100,
+      elapsedSeconds: Math.floor((Date.now() - startTime) / 1000),
+      etaSeconds: 0,
+      details: `✅ Xong ${successCount}/${results.length} tập truyện audio!`,
+    });
+  } else {
+    logger.error('Pipeline', `❌ Pipeline dừng lại: Không có tập nào được xử lý!`);
+    console.log('═'.repeat(60));
+
+    emitProgress({
+      videoIndex: 0,
+      totalVideos: 0,
+      step: 0,
+      stepName: 'Thất Bại',
+      stepPercent: 0,
+      overallPercent: 0,
+      elapsedSeconds: Math.floor((Date.now() - startTime) / 1000),
+      etaSeconds: 0,
+      details: `❌ Pipeline chưa xử lý được tập nào. Vui lòng kiểm tra lại cấu hình truyện!`,
+    });
+  }
 
   return results;
 }
 
+// CLI run
 if (require.main === module) {
   const args = process.argv.slice(2);
   const options = {};
@@ -233,10 +356,17 @@ if (require.main === module) {
     const idx = args.indexOf('--hashtags');
     options.hashtags = args[idx + 1]?.split(',') || config.pipeline.hashtags;
   }
-
   if (args.includes('--max')) {
     const idx = args.indexOf('--max');
-    options.maxVideos = parseInt(args[idx + 1]) || config.pipeline.maxVideosPerRun;
+    options.maxEpisodes = parseInt(args[idx + 1]) || config.pipeline.maxVideosPerRun;
+  }
+  if (args.includes('--start')) {
+    const idx = args.indexOf('--start');
+    options.startEpisode = parseInt(args[idx + 1]) || 1;
+  }
+  if (args.includes('--words')) {
+    const idx = args.indexOf('--words');
+    options.wordsPerEpisode = parseInt(args[idx + 1]) || config.story.wordsPerEpisode;
   }
 
   runPipeline(options).then(() => {

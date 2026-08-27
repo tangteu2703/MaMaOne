@@ -70,6 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
   connectWebSocket();
   loadConfig();
   loadVideos();
+  syncPipelineFiles();
+  initStoryTab();
 
   // Event Listeners
   btnRunPipeline.addEventListener('click', confirmRunPipeline);
@@ -81,10 +83,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 1. WebSocket Setup
 function connectWebSocket() {
+  // Fallback về localhost:3000 nếu mở bằng file:// (host sẽ rỗng)
+  const host = location.host || 'localhost:3000';
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${location.host}`;
+  const wsUrl = `${protocol}//${host}`;
 
-  ws = new WebSocket(wsUrl);
+  try {
+    ws = new WebSocket(wsUrl);
+  } catch (e) {
+    setStatus('offline', 'Không thể kết nối');
+    setTimeout(connectWebSocket, 5000);
+    return;
+  }
 
   ws.onopen = () => {
     setStatus('online', 'Đang Chờ (Idle)');
@@ -133,17 +143,41 @@ function handleWSMessage(msg) {
       break;
 
     case 'progress':
-      updateRealtimeProgress(msg.data.data);
+      updateRealtimeProgress(msg.data.data || msg.data);
       break;
     case 'history_update':
-      updateHistoryTable(msg.data);
+      if (Array.isArray(msg.data)) {
+        msg.data.forEach(item => {
+          if (item && item.id) {
+            const existing = masterVideoMap.get(item.id) || {};
+            masterVideoMap.set(item.id, {
+              ...existing,
+              id: item.id,
+              author: existing.author || 'Tập ' + (parseInt(item.id.replace('ep', '')) || 1),
+              desc: item.title || existing.desc || 'Tập truyện',
+              scriptTitle: item.title || existing.scriptTitle || 'Tập truyện',
+              scriptBody: item.script || item.caption || existing.scriptBody,
+              videoFile: item.videoFile || existing.videoFile,
+              finalFile: item.videoFile ? item.videoFile.replace('/output/', '') : existing.finalFile,
+              finalVideoState: 'done',
+              status: item.status || 'success',
+            });
+          }
+        });
+        renderMasterTable();
+      }
       break;
+
     case 'ai_video_created':
       handleAIVideoResult(msg.data);
       break;
 
     case 'config_updated':
       populateConfig(msg.data);
+      break;
+
+    case 'story_updated':
+      loadStory();
       break;
   }
 }
@@ -242,68 +276,434 @@ function updateRealtimeProgress(data) {
     }
   }
 
-  // 3. Update Scraped Queue Table
-  if (data.videoId && !scrapedVideosQueue.some(v => v.id === data.videoId)) {
-    scrapedVideosQueue.push({
-      id: data.videoId,
-      author: data.videoAuthor || 'unknown',
-      desc: data.videoDesc || 'N/A',
-      views: '1,200,000+',
-      status: data.step === 5 && data.stepPercent === 100 ? '✅ Hoàn Thành' : '🔄 Đang Xử Lý'
-    });
-    renderScrapedQueue();
-  } else if (data.videoId) {
-    const item = scrapedVideosQueue.find(v => v.id === data.videoId);
-    if (item) {
-      item.status = (data.step === 5 && data.stepPercent === 100) ? '✅ Hoàn Thành' : `🔄 Bước ${data.step}/5 (${data.stepName})`;
-      renderScrapedQueue();
-    }
+  // 3. Update Master Pipeline Table State
+  updateMasterVideoState(data);
+}
+
+
+// 1. WebSocket Setup
+function connectWebSocket() {
+  // Fallback về localhost:3000 nếu mở bằng file:// (host sẽ rỗng)
+  const host = location.host || 'localhost:3000';
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${host}`;
+
+  try {
+    ws = new WebSocket(wsUrl);
+  } catch (e) {
+    setStatus('offline', 'Không thể kết nối');
+    setTimeout(connectWebSocket, 5000);
+    return;
   }
 
-  // 4. Update Script Preview List
-  if (data.scriptTitle) {
-    if (!translatedScriptsList.some(s => s.id === data.videoId)) {
-      translatedScriptsList.push({
-        id: data.videoId,
-        title: data.scriptTitle,
-        details: data.details,
-      });
+  ws.onopen = () => {
+    setStatus('online', 'Đang Chờ (Idle)');
+    appendLog({ level: 'INFO', module: 'Dashboard', message: 'Đã kết nối với Web Dashboard Server!' });
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      handleWSMessage(msg);
+    } catch (e) {
+      console.error('Lỗi parse WS data:', e);
     }
-    renderScriptList();
+  };
+
+  ws.onclose = () => {
+    setStatus('offline', 'Mất Kết Nối');
+    appendLog({ level: 'WARN', module: 'Dashboard', message: 'Mất kết nối với Server. Đang thử lại trong 3s...' });
+    setTimeout(connectWebSocket, 3000);
+  };
+
+  ws.onerror = () => {
+    setStatus('offline', 'Lỗi Kết Nối');
+  };
+}
+
+// Handle Incoming WS Messages
+function handleWSMessage(msg) {
+  switch (msg.type) {
+    case 'init':
+      updateState(msg.data.state);
+      if (msg.data.recentLogs) {
+        terminalLogs.innerHTML = '';
+        msg.data.recentLogs.forEach(appendLog);
+      }
+      if (msg.data.config) populateConfig(msg.data.config);
+      if (msg.data.activeProgress) updateRealtimeProgress(msg.data.activeProgress);
+      break;
+
+    case 'log':
+      appendLog(msg.data);
+      break;
+
+    case 'state_change':
+      updateState(msg.data);
+      break;
+
+    case 'progress':
+      updateRealtimeProgress(msg.data.data || msg.data);
+      break;
+    case 'history_update':
+      if (Array.isArray(msg.data)) {
+        msg.data.forEach(item => {
+          if (item && item.id) {
+            const existing = masterVideoMap.get(item.id) || {};
+            masterVideoMap.set(item.id, {
+              ...existing,
+              id: item.id,
+              author: existing.author || 'Tập ' + (parseInt(item.id.replace('ep', '')) || 1),
+              desc: item.title || existing.desc || 'Tập truyện',
+              scriptTitle: item.title || existing.scriptTitle || 'Tập truyện',
+              scriptBody: item.script || item.caption || existing.scriptBody,
+              videoFile: item.videoFile || existing.videoFile,
+              finalFile: item.videoFile ? item.videoFile.replace('/output/', '') : existing.finalFile,
+              finalVideoState: 'done',
+              status: item.status || 'success',
+            });
+          }
+        });
+        renderMasterTable();
+      }
+      break;
+
+    case 'ai_video_created':
+      handleAIVideoResult(msg.data);
+      break;
+
+    case 'config_updated':
+      populateConfig(msg.data);
+      break;
+
+    case 'story_updated':
+      loadStory();
+      break;
   }
 }
 
-function renderScrapedQueue() {
-  if (scrapedVideosQueue.length === 0) return;
-  scrapedQueueTbody.innerHTML = scrapedVideosQueue.map((v, i) => `
-    <tr class="hover:bg-slate-900/50 transition">
-      <td class="p-3 font-bold text-slate-400">${i + 1}</td>
-      <td class="p-3">
-        <div class="font-bold text-indigo-300">${v.id}</div>
-        <div class="text-[11px] text-slate-400">@${v.author}</div>
-      </td>
-      <td class="p-3 max-w-xs truncate text-slate-200">${escapeHtml(v.desc)}</td>
-      <td class="p-3 text-right font-bold text-cyan-400">${v.views}</td>
-      <td class="p-3 text-center">
-        <span class="px-2.5 py-1 text-[10px] font-bold rounded-full ${v.status.includes('✅') ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'}">
-          ${v.status}
-        </span>
-      </td>
-    </tr>
-  `).join('');
+// Update Status Pill & Stats
+function setStatus(type, text) {
+  statusText.textContent = text;
+
+  if (type === 'running') {
+    statusDot.className = 'w-2.5 h-2.5 rounded-full bg-cyan-400 pulse-dot shadow-[0_0_10px_#06b6d4]';
+    systemStatusPill.className = 'flex items-center gap-2 px-3.5 py-2 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-xs font-medium text-cyan-300';
+  } else if (type === 'online') {
+    statusDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#10b981]';
+    systemStatusPill.className = 'flex items-center gap-2 px-3.5 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-xs font-medium text-emerald-300';
+  } else {
+    statusDot.className = 'w-2.5 h-2.5 rounded-full bg-slate-500';
+    systemStatusPill.className = 'flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs font-medium text-slate-400';
+  }
 }
 
-function renderScriptList() {
-  if (translatedScriptsList.length === 0) return;
-  scriptPreviewContainer.innerHTML = translatedScriptsList.map((s, i) => `
-    <div class="bg-slate-950/80 p-4 rounded-xl border border-slate-800/80 space-y-2">
-      <div class="flex justify-between items-center">
-        <h4 class="text-sm font-bold text-indigo-300">#${i + 1} - Tiêu đề: "${escapeHtml(s.title)}"</h4>
-        <span class="px-2 py-0.5 text-[10px] font-bold bg-purple-500/20 text-purple-300 rounded-full border border-purple-500/30">ID: ${s.id}</span>
-      </div>
-      <p class="text-xs text-slate-300 leading-relaxed font-sans">${escapeHtml(s.details || 'Đã dịch kịch bản Tiếng Việt hoàn chỉnh với AI Gemini.')}</p>
-    </div>
-  `).join('');
+function updateState(state) {
+  if (!state) return;
+
+  if (state.isRunning) {
+    setStatus('running', 'Đang Chạy Pipeline...');
+    btnRunPipeline.disabled = true;
+    btnRunPipeline.classList.add('opacity-50', 'cursor-not-allowed');
+    pipelineProgressCard.classList.remove('hidden');
+  } else {
+    setStatus('online', 'Đang Chờ (Idle)');
+    btnRunPipeline.disabled = false;
+    btnRunPipeline.classList.remove('opacity-50', 'cursor-not-allowed');
+    pipelineProgressCard.classList.add('hidden');
+  }
+
+  if (state.stats) {
+    statTotal.textContent = state.stats.processedToday || 0;
+    statSuccess.textContent = state.stats.successToday || 0;
+    statFailed.textContent = state.stats.failedToday || 0;
+  }
+}
+
+// UPDATE REALTIME PROGRESS TAB & LISTS
+function updateRealtimeProgress(data) {
+  if (!data) return;
+
+  // 1. Overall Progress & Timers
+  const overallPct = data.overallPercent || 0;
+  liveProgressBadge.textContent = `${overallPct}%`;
+  prgOverallPercent.textContent = `${overallPct}%`;
+  prgOverallBar.style.width = `${overallPct}%`;
+
+  progressBarFill.style.width = `${overallPct}%`;
+  progressPercent.textContent = `${overallPct}%`;
+  currentStepLabel.textContent = `[Video ${data.videoIndex || 1}/${data.totalVideos || 1}] ${data.stepName}: ${data.details || ''}`;
+
+  prgQueueStatus.textContent = `Đang Xử Lý Video ${data.videoIndex || 1}/${data.totalVideos || 1}`;
+  prgVideoId.textContent = `ID: ${data.videoId || '--'}`;
+  prgVideoTitle.textContent = data.scriptTitle || data.videoDesc || 'Đang xử lý video...';
+  prgVideoAuthor.textContent = `Tác giả gốc: @${data.videoAuthor || 'unknown'} | ${data.videoDesc ? data.videoDesc.substring(0, 70) + '...' : ''}`;
+
+  // Timers Format
+  prgTimerElapsed.textContent = formatTime(data.elapsedSeconds || 0);
+  prgTimerEta.textContent = formatEta(data.etaSeconds || 0);
+
+  // 2. Step Cards Update (1 to 5)
+  const currentStep = data.step || 0;
+
+  for (let s = 1; s <= 5; s++) {
+    const card = document.getElementById(`step-card-${s}`);
+    const badge = document.getElementById(`step-badge-${s}`);
+    const bar = document.getElementById(`step-bar-${s}`);
+    const desc = document.getElementById(`step-desc-${s}`);
+
+    if (!card || !badge || !bar) continue;
+
+    if (s < currentStep) {
+      card.className = 'glass-card rounded-xl p-4 border border-emerald-500/40 bg-emerald-950/20 flex flex-col justify-between space-y-3 opacity-100 transition-all';
+      badge.className = 'text-[10px] font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30';
+      badge.textContent = '✅ Xong';
+      bar.className = 'bg-emerald-400 h-full transition-all duration-300';
+      bar.style.width = '100%';
+    } else if (s === currentStep) {
+      card.className = 'glass-card rounded-xl p-4 border border-cyan-400 bg-cyan-950/30 flex flex-col justify-between space-y-3 opacity-100 shadow-[0_0_15px_rgba(6,182,212,0.2)] transition-all';
+      badge.className = 'text-[10px] font-bold px-2 py-0.5 bg-cyan-500/20 text-cyan-300 rounded-full border border-cyan-500/30 pulse-dot';
+      badge.textContent = `⚡ ${data.stepPercent || 50}%`;
+      bar.className = 'bg-gradient-to-r from-indigo-500 to-cyan-400 h-full transition-all duration-300';
+      bar.style.width = `${data.stepPercent || 50}%`;
+      if (desc && data.details) desc.textContent = data.details;
+    } else {
+      card.className = 'glass-card rounded-xl p-4 border border-slate-800 flex flex-col justify-between space-y-3 opacity-40 transition-all';
+      badge.className = 'text-[10px] font-bold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full';
+      badge.textContent = 'Chờ';
+      bar.className = 'bg-slate-700 h-full transition-all duration-300';
+      bar.style.width = '0%';
+    }
+  }
+
+  // 3. Update Master Pipeline Table State
+  updateMasterVideoState(data);
+}
+
+let masterVideoMap = new Map();
+let availableFiles = { downloads: [], outputs: [] };
+
+async function syncPipelineFiles() {
+  try {
+    const res = await fetch('/api/pipeline-files');
+    const data = await res.json();
+    if (data.success) {
+      availableFiles = data;
+      renderMasterTable();
+    }
+  } catch (e) {
+    console.error('Lỗi sync pipeline files:', e);
+  }
+}
+
+function updateMasterVideoState(data) {
+  if (!data || !data.videoId) return;
+
+  const id = data.videoId;
+  let video = masterVideoMap.get(id) || {
+    id: id,
+    author: data.videoAuthor || 'unknown',
+    desc: data.videoDesc || 'N/A',
+    views: '1,000,000+',
+    step: 0,
+    downloadState: 'pending',
+    downloadFile: data.downloadFile || '',
+    scriptState: 'pending',
+    scriptTitle: '',
+    scriptBody: '',
+    voiceState: 'pending',
+    finalVideoState: 'pending',
+    finalFile: data.finalFile || '',
+    uploadState: 'pending',
+  };
+
+  if (data.videoAuthor) video.author = data.videoAuthor;
+  if (data.videoDesc) video.desc = data.videoDesc;
+  if (data.downloadFile) video.downloadFile = data.downloadFile;
+  if (data.finalFile) video.finalFile = data.finalFile;
+  if (data.step) video.step = data.step;
+
+  if (data.step === 1) {
+    video.downloadState = data.stepPercent < 100 ? 'running' : 'done';
+  } else if (data.step > 1) {
+    video.downloadState = 'done';
+  }
+
+  if (data.scriptBody) video.scriptBody = data.scriptBody;
+  if (data.scriptTitle) video.scriptTitle = data.scriptTitle;
+  if (data.details && (data.details.includes('Kịch bản') || data.details.includes('dịch'))) {
+    if (!video.scriptBody) video.scriptBody = data.details;
+  }
+  if (data.step === 2 || video.scriptBody) {
+    video.scriptState = 'done';
+  }
+
+  if (data.step === 3) {
+    video.voiceState = data.stepPercent < 100 ? 'running' : 'done';
+  } else if (data.step > 3) {
+    video.voiceState = 'done';
+  }
+
+  if (data.step === 4) {
+    video.finalVideoState = data.stepPercent < 100 ? 'running' : 'done';
+  } else if (data.step > 4) {
+    video.finalVideoState = 'done';
+  }
+
+  if (data.step === 5) {
+    video.uploadState = 'skipped';
+  }
+
+  masterVideoMap.set(id, video);
+  renderMasterTable();
+}
+
+
+function findMatchingFileUrl(filesList, videoId) {
+  if (!filesList || !filesList.length) return null;
+  const match = filesList.find(f => f.filename.includes(videoId));
+  return match ? match.url : null;
+}
+
+function renderMasterTable() {
+  const tbody = document.getElementById('master-pipeline-tbody');
+  if (!tbody) return;
+
+  const videos = Array.from(masterVideoMap.values());
+  if (videos.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
+          Chưa có video nào trong danh sách. Bấm <b>"CHẠY PIPELINE NGAY"</b> để bắt đầu cào và xử lý video!
+        </td>
+      </tr>`;
+    return;
+  }
+
+  tbody.innerHTML = videos.map((v, i) => {
+    // Tìm URL file video gốc & video output
+    const downloadUrl = v.downloadFile ? (v.downloadFile.startsWith('/') ? v.downloadFile : `/downloads/${v.downloadFile}`) : null;
+    const finalUrl = v.videoFile || (v.finalFile ? (v.finalFile.startsWith('/') ? v.finalFile : `/output/${v.finalFile}`) : null);
+
+    // 1. Download Chip & Inline Player
+    let downloadChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-800 text-slate-400">⏳ Chờ</span>';
+    if (v.downloadState === 'running') {
+      downloadChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 pulse-dot">⚡ Đang cào/tải...</span>';
+    } else if (v.downloadState === 'done' || downloadUrl) {
+      downloadChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">✅ Đã tải video nền</span>';
+    }
+
+    let downloadPlayerHtml = '';
+    if (downloadUrl) {
+      downloadPlayerHtml = `
+        <div class="relative bg-black rounded-xl overflow-hidden aspect-[9/16] w-36 max-h-56 mt-2 border border-slate-800 shadow-lg">
+          <video controls preload="metadata" class="w-full h-full object-cover">
+            <source src="${downloadUrl}" type="video/mp4">
+          </video>
+        </div>`;
+    }
+
+    // 2. Script Chip & Content
+    let scriptChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-800 text-slate-400">⏳ Chờ kịch bản</span>';
+    if (v.scriptState === 'running') {
+      scriptChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 pulse-dot">⚡ Đang xử lý...</span>';
+    } else if (v.scriptState === 'done' || v.scriptBody) {
+      scriptChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">✅ Văn bản tập xong</span>';
+    }
+
+    // 3. Voice & Subtitle Chip
+    let voiceChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-800 text-slate-400">⏳ Chờ</span>';
+    if (v.voiceState === 'running') {
+      voiceChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 pulse-dot">⚡ Đang tạo voice (1.35x)...</span>';
+    } else if (v.voiceState === 'done') {
+      voiceChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">✅ Voice & Sub (1.35x) xong</span>';
+    }
+
+    // 4. Final Video Chip & Inline Player
+    let finalChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-800 text-slate-400">⏳ Chờ</span>';
+    if (v.finalVideoState === 'running') {
+      finalChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 pulse-dot">⚡ Đang render...</span>';
+    } else if (v.finalVideoState === 'done' || finalUrl || v.status === 'success') {
+      finalChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">✅ Render thành công</span>';
+    }
+
+    let finalPlayerHtml = '<span class="text-[11px] text-slate-500 italic block mt-2">Đang xử lý / Chưa có video final</span>';
+    if (finalUrl) {
+      finalPlayerHtml = `
+        <div class="relative bg-black rounded-xl overflow-hidden aspect-[9/16] w-36 max-h-56 mt-2 border border-slate-800 shadow-lg glow-purple">
+          <video controls preload="metadata" class="w-full h-full object-cover">
+            <source src="${finalUrl}" type="video/mp4">
+          </video>
+        </div>
+        <a href="${finalUrl}" download class="inline-flex items-center justify-center gap-1 w-36 px-2.5 py-1.5 mt-2 bg-indigo-600/30 hover:bg-indigo-600/60 text-indigo-200 rounded-lg text-[11px] font-semibold border border-indigo-500/40 transition">
+          📥 Tải Về Máy
+        </a>`;
+    }
+
+    // 5. TikTok Upload Chip & Button
+    let uploadChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">⏳ Sẵn sàng đăng</span>';
+    if (v.uploadState === 'skipped') {
+      uploadChip = '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-800 text-slate-400">⏭️ Tạm bỏ qua</span>';
+    }
+
+    return `
+      <tr class="hover:bg-slate-900/50 transition align-top">
+        <td class="p-3 text-center font-bold text-slate-400 font-mono">${i + 1}</td>
+
+        <td class="p-3 space-y-1.5 min-w-[180px]">
+          <div>${downloadChip}</div>
+          <div class="font-bold text-indigo-300 font-mono text-xs">${v.id}</div>
+          <div class="text-[11px] text-slate-400">@${escapeHtml(v.author)}</div>
+          <div class="text-xs text-slate-200 line-clamp-2">${escapeHtml(v.desc)}</div>
+          ${downloadPlayerHtml}
+        </td>
+
+        <td class="p-3 space-y-1.5 min-w-[240px] max-w-[320px]">
+          <div>${scriptChip}</div>
+          ${v.scriptTitle ? `<div class="font-bold text-indigo-300 text-xs mt-1">"${escapeHtml(v.scriptTitle)}"</div>` : ''}
+          ${v.scriptBody ? `<div class="text-[11px] text-slate-300 leading-relaxed italic bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/60 max-h-36 overflow-y-auto mt-1 whitespace-pre-wrap">${escapeHtml(v.scriptBody)}</div>` : '<div class="text-xs text-slate-500 italic mt-1">(Chưa có văn bản)</div>'}
+        </td>
+
+        <td class="p-3 space-y-1.5">
+          <div>${voiceChip}</div>
+          <div class="text-[11px] text-slate-300 mt-1">Giọng: <b>Hoài My (1.35x)</b></div>
+          <div class="text-[10px] text-slate-400">Tự động burn-in phụ đề Tiếng Việt</div>
+        </td>
+
+        <td class="p-3 space-y-1.5">
+          <div>${finalChip}</div>
+          <div>${finalPlayerHtml}</div>
+        </td>
+
+        <td class="p-3 text-center space-y-2">
+          <div>${uploadChip}</div>
+          <button onclick="triggerManualUpload('${v.id}')" class="w-full px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-cyan-500 hover:opacity-90 text-white rounded-lg text-xs font-bold shadow-md transition flex items-center justify-center gap-1">
+            🚀 Đăng TikTok
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function viewOutputVideo(videoId) {
+  const tabVideos = document.querySelector('.nav-tab[data-tab="videos"]');
+  if (tabVideos) tabVideos.click();
+}
+
+function triggerManualUpload(videoId) {
+  Swal.fire({
+    title: 'Đăng Video Lên TikTok',
+    text: `Tính năng đăng tự động cho video ${videoId} tạm thời để nút mẫu. Bạn có muốn kích hoạt trong phiên bản tới?`,
+    icon: 'info',
+    showCancelButton: true,
+    confirmButtonColor: '#6366f1',
+    cancelButtonColor: '#374151',
+    confirmButtonText: 'Đồng ý',
+    cancelButtonText: 'Đóng',
+    background: '#111827',
+    color: '#fff',
+  });
 }
 
 function formatTime(seconds) {
@@ -338,7 +738,6 @@ function appendLog(log) {
     <span class="text-slate-200 font-semibold">[${log.module}]</span>
     <span class="text-slate-300">${escapeHtml(log.message)}</span>
   `;
-
   terminalLogs.appendChild(div);
 
   if (autoScroll) {
@@ -356,32 +755,70 @@ function escapeHtml(text) {
 
 // 3. Confirm & Run Pipeline with SweetAlert2
 function confirmRunPipeline() {
+  const currentTags = inputHashtags.value || 'satisfying,building,craft,lego';
+  const storyMax = document.getElementById('input-max-episodes')?.value;
+  const storyStart = document.getElementById('input-start-episode')?.value;
+  const currentMax = storyMax || inputMaxVideos.value || 3;
+  const currentStart = storyStart || 1;
+  const currentMinViews = inputMinViews.value !== undefined ? inputMinViews.value : 10000;
+
   Swal.fire({
-    title: 'Kích Hoạt Pipeline?',
-    text: 'Hệ thống sẽ cào trend TikTok → Dịch AI → Tạo voice → Ghép video!',
-    icon: 'question',
+    title: '🚀 Kích Hoạt Pipeline Truyện Audio',
+    html: `
+      <div class="space-y-4 text-left font-sans pt-2">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Bắt Đầu Từ Tập:</label>
+            <input id="swal-start-episode" type="number" min="1" max="100" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs font-bold" value="${currentStart}">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Số Tập Render Lần Này:</label>
+            <input id="swal-max-videos" type="number" min="1" max="50" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs font-bold text-amber-400" value="${currentMax}">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Hashtags Cào Video Nền (phân cách bằng dấu phẩy):</label>
+          <input id="swal-hashtags" type="text" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs" value="${escapeHtml(currentTags)}">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Min View Lọc Video Nền (0 = Không Lọc):</label>
+          <input id="swal-min-views" type="number" min="0" step="5000" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white text-xs" value="${currentMinViews}">
+        </div>
+      </div>
+    `,
     showCancelButton: true,
     confirmButtonColor: '#6366f1',
     cancelButtonColor: '#374151',
-    confirmButtonText: '🚀 Chạy Ngay!',
+    confirmButtonText: '🚀 Bắt Đầu Render ngay!',
     cancelButtonText: 'Hủy',
     background: '#111827',
     color: '#fff',
+    preConfirm: () => {
+      return {
+        hashtags: document.getElementById('swal-hashtags').value.trim(),
+        maxVideos: parseInt(document.getElementById('swal-max-videos').value || '3'),
+        startEpisode: parseInt(document.getElementById('swal-start-episode').value || '1'),
+        minViews: parseInt(document.getElementById('swal-min-views').value || '0'),
+      };
+    }
   }).then((result) => {
-    if (result.isConfirmed) {
-      runPipeline();
+    if (result.isConfirmed && result.value) {
+      runPipeline(result.value);
     }
   });
 }
 
-async function runPipeline() {
+async function runPipeline(options = {}) {
   try {
     btnRunPipeline.disabled = true;
-    appendLog({ level: 'INFO', module: 'Dashboard', message: 'Đã phát lệnh chạy Pipeline từ Dashboard!' });
+    appendLog({ level: 'INFO', module: 'Dashboard', message: `Phát lệnh chạy Pipeline (${options.maxVideos || 5} video, minViews: ${options.minViews || 0})...` });
 
     const res = await fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options),
     });
     const data = await res.json();
 
@@ -595,4 +1032,248 @@ function initAnalyticsChart() {
     chart = new ApexCharts(chartEl, options);
     chart.render();
   }
+}
+
+// ==========================================
+// STORY AUDIO TAB — Management Functions
+// ==========================================
+function initStoryTab() {
+  const btnSaveStory = document.getElementById('btn-save-story');
+  const btnLoadStory = document.getElementById('btn-load-story');
+  const inputStoryContent = document.getElementById('input-story-content');
+  const inputWordsPerEp = document.getElementById('input-words-per-ep');
+
+  if (btnSaveStory) btnSaveStory.addEventListener('click', saveStory);
+  if (btnLoadStory) btnLoadStory.addEventListener('click', loadStory);
+
+  if (inputStoryContent) inputStoryContent.addEventListener('input', autoSplitStoryPreview);
+  if (inputWordsPerEp) {
+    inputWordsPerEp.addEventListener('input', () => {
+      const maxEpInput = document.getElementById('input-max-episodes');
+      if (maxEpInput) delete maxEpInput.dataset.userSet;
+      autoSplitStoryPreview();
+    });
+  }
+
+  // Auto-load story info on tab init
+  loadStory();
+}
+
+
+// Load story info from server
+async function loadStory() {
+  try {
+    const res = await fetch('/api/story');
+    const data = await res.json();
+
+    const titleDisplay = document.getElementById('story-title-display');
+    const metaDisplay = document.getElementById('story-meta-display');
+    const badge = document.getElementById('story-episode-badge');
+    const totalBadge = document.getElementById('total-episodes-badge');
+
+    if (data.success && data.totalEpisodes > 0) {
+      if (titleDisplay) titleDisplay.textContent = data.storyTitle || 'Truyện Chưa Đặt Tên';
+      if (metaDisplay) metaDisplay.textContent = `${data.totalEpisodes} tập | ${data.totalWords?.toLocaleString() || 0} từ${data.progress ? ` | Đã render đến Tập ${data.progress.lastProcessedEpisode}` : ''}`;
+      if (badge) badge.textContent = `${data.totalEpisodes} tập`;
+      if (totalBadge) totalBadge.textContent = `${data.totalEpisodes} tập`;
+
+      // Auto-fill story title input
+      const titleInput = document.getElementById('input-story-title');
+      if (titleInput && !titleInput.value) titleInput.value = data.storyTitle || '';
+
+      // Auto-set start episode to next unprocessed
+      if (data.progress && data.progress.lastProcessedEpisode) {
+        const startInput = document.getElementById('input-start-episode');
+        if (startInput) startInput.value = data.progress.lastProcessedEpisode + 1;
+      }
+
+      renderEpisodesList(data.episodes || []);
+    } else {
+      if (titleDisplay) titleDisplay.textContent = 'Chưa có truyện nào';
+      if (metaDisplay) metaDisplay.textContent = data.error || 'Dán nội dung truyện vào ô phía dưới để bắt đầu';
+      if (badge) badge.textContent = '0 tập';
+      if (totalBadge) totalBadge.textContent = '0 tập';
+    }
+  } catch (e) {
+    console.warn('Không tải được thông tin truyện:', e.message);
+  }
+}
+
+// Save story from textarea
+async function saveStory() {
+  const titleInput = document.getElementById('input-story-title');
+  const contentInput = document.getElementById('input-story-content');
+  const statusEl = document.getElementById('story-save-status');
+  const btn = document.getElementById('btn-save-story');
+
+  const storyContent = contentInput?.value?.trim();
+  const storyTitle = titleInput?.value?.trim() || 'Truyện Của Tôi';
+
+  if (!storyContent || storyContent.length < 50) {
+    if (statusEl) { statusEl.textContent = '❌ Nội dung truyện quá ngắn!'; statusEl.className = 'text-xs font-medium text-rose-400 min-h-[18px]'; }
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang phân đoạn...'; if (window.lucide) lucide.createIcons(); }
+  if (statusEl) { statusEl.textContent = 'Đang lưu và phân đoạn truyện...'; statusEl.className = 'text-xs font-medium text-slate-400 min-h-[18px]'; }
+
+  try {
+    const res = await fetch('/api/story', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyContent, storyTitle }),
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      if (statusEl) { statusEl.textContent = `✅ ${data.message}`; statusEl.className = 'text-xs font-medium text-emerald-400 min-h-[18px]'; }
+      setTimeout(() => loadStory(), 500);
+    } else {
+      if (statusEl) { statusEl.textContent = `❌ ${data.error}`; statusEl.className = 'text-xs font-medium text-rose-400 min-h-[18px]'; }
+    }
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = `❌ Lỗi kết nối: ${e.message}`; statusEl.className = 'text-xs font-medium text-rose-400 min-h-[18px]'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="save" class="w-4 h-4"></i> Lưu &amp; Phân Đoạn'; if (window.lucide) lucide.createIcons(); }
+  }
+}
+
+// Run story pipeline from Story tab
+async function runStoryPipeline() {
+  const startEpisode = parseInt(document.getElementById('input-start-episode')?.value) || 1;
+  const maxEpisodes = parseInt(document.getElementById('input-max-episodes')?.value) || 3;
+  const wordsPerEp = parseInt(document.getElementById('input-words-per-ep')?.value) || 200;
+  const musicVol = parseFloat(document.getElementById('input-music-vol')?.value) || 0.40;
+  const storyTitle = document.getElementById('input-story-title')?.value?.trim();
+  const storyContent = document.getElementById('input-story-content')?.value?.trim();
+
+  const confirmResult = await Swal.fire({
+    title: '🎧 Render Truyện Audio',
+    html: `<div class="text-left text-sm space-y-2">
+      <p>📖 Truyện: <b>${storyTitle || 'Truyện hiện tại'}</b></p>
+      <p>🎬 Render: Tập <b>${startEpisode}</b> đến <b>${startEpisode + maxEpisodes - 1}</b> (${maxEpisodes} tập)</p>
+      <p>🎵 Nhạc Lofi: <b>${(musicVol * 100).toFixed(0)}%</b> âm lượng</p>
+    </div>`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Chạy Ngay!',
+    cancelButtonText: 'Hủy',
+    background: '#111827',
+    color: '#f1f5f9',
+    confirmButtonColor: '#6366f1',
+  });
+
+  if (!confirmResult.isConfirmed) return;
+
+  const btn = document.getElementById('btn-run-story');
+  const statusEl = document.getElementById('story-save-status');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang kích hoạt...'; if (window.lucide) lucide.createIcons(); }
+
+  try {
+    const body = {
+      maxVideos: maxEpisodes,
+      startEpisode,
+      wordsPerEpisode: wordsPerEp,
+    };
+    if (storyContent && storyContent.length > 50) {
+      body.storyContent = storyContent;
+      body.storyTitle = storyTitle;
+    }
+
+    const res = await fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      if (statusEl) { statusEl.textContent = '✅ Pipeline đã kích hoạt! Theo dõi tiến trình ở tab Tiến Trình Realtime'; statusEl.className = 'text-xs font-medium text-emerald-400 min-h-[18px]'; }
+      // Switch to progress tab
+      setTimeout(() => {
+        const progressTab = document.querySelector('[data-tab="progress"]');
+        if (progressTab) progressTab.click();
+      }, 1000);
+    } else {
+      if (statusEl) { statusEl.textContent = `❌ ${data.message}`; statusEl.className = 'text-xs font-medium text-rose-400 min-h-[18px]'; }
+    }
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = `❌ Lỗi: ${e.message}`; statusEl.className = 'text-xs font-medium text-rose-400 min-h-[18px]'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="play" class="w-4 h-4 fill-white"></i> Render Truyện Ngay'; if (window.lucide) lucide.createIcons(); }
+  }
+}
+
+// Render episodes list in Story tab
+function renderEpisodesList(episodes) {
+  const container = document.getElementById('episodes-list');
+  if (!container) return;
+
+  if (!episodes || episodes.length === 0) {
+    container.innerHTML = '<div class="text-center text-slate-500 text-sm py-12">Chưa có tập nào</div>';
+    return;
+  }
+
+  container.innerHTML = episodes.map(ep => {
+    const mins = Math.floor(ep.estimatedDurationSeconds / 60);
+    const secs = ep.estimatedDurationSeconds % 60;
+    const dur = mins > 0 ? `${mins}p${secs}s` : `${secs}s`;
+    return `
+      <div class="flex items-start gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-800/60 hover:border-amber-500/30 transition group">
+        <div class="w-8 h-8 flex-shrink-0 rounded-lg bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-amber-400 font-bold text-xs mt-0.5">${ep.index}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-xs font-semibold text-white truncate">${ep.title}</span>
+            <span class="flex-shrink-0 px-1.5 py-0.5 text-[10px] bg-slate-800 text-slate-400 rounded font-mono">${ep.wordCount}t~${dur}</span>
+          </div>
+          <p class="text-[11px] text-slate-500 leading-relaxed line-clamp-2">${ep.preview || ''}</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (window.lucide) lucide.createIcons();
+}
+
+// Auto-split preview client side on typing or changing words-per-ep
+function autoSplitStoryPreview() {
+  const contentInput = document.getElementById('input-story-content');
+  const wordsInput = document.getElementById('input-words-per-ep');
+  const totalBadge = document.getElementById('total-episodes-badge');
+  const maxEpInput = document.getElementById('input-max-episodes');
+
+  const content = contentInput?.value?.trim() || '';
+  const targetWords = parseInt(wordsInput?.value) || 200;
+
+  if (!content || content.length < 30) return;
+
+  const words = content.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return;
+
+  // Split by targetWords (~200 words per episode)
+  const episodes = [];
+  let currentWords = [];
+
+  for (let i = 0; i < words.length; i++) {
+    currentWords.push(words[i]);
+    if (currentWords.length >= targetWords || i === words.length - 1) {
+      const epText = currentWords.join(' ');
+      const estSec = Math.round(currentWords.length / 2.8);
+      episodes.push({
+        index: episodes.length + 1,
+        title: `Tập ${episodes.length + 1}`,
+        wordCount: currentWords.length,
+        estimatedDurationSeconds: estSec,
+        preview: epText.substring(0, 140) + '...',
+        content: epText,
+      });
+      currentWords = [];
+    }
+  }
+
+  if (totalBadge) totalBadge.textContent = `${episodes.length} tập`;
+  if (maxEpInput && !maxEpInput.dataset.userSet) {
+    maxEpInput.value = episodes.length;
+  }
+  renderEpisodesList(episodes);
 }

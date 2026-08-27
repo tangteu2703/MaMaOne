@@ -2,9 +2,7 @@ node_modules/
 .env
 **/node_modules/
 **/.env
-workspace/downloads/
-workspace/audio/
-workspace/output/
+**/workspace/
 logs/
 config/tiktok-session.json
 *.log

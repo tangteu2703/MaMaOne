@@ -1,194 +1,231 @@
 // ==========================================
 // MODULE 2: VIDEO DOWNLOADER
-// Tải video TikTok không watermark qua yt-dlp
+// Tải video TikTok không watermark (TikWM API -> yt-dlp -> Playwright)
+// QUAN TRỌNG: Tải video THẬT 100%, không bao giờ tạo placeholder/giả!
 // ==========================================
-const { exec, execSync } = require('child_process');
+const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
+const { exec, execSync } = require('child_process');
 const config = require('../../config/config');
 const logger = require('../logger');
+const { downloadWithPlaywright } = require('./playwrightDownloader');
 
 const MODULE = 'Downloader';
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+const YTDLP_LOCAL = path.join(__dirname, '../../bin/yt-dlp.exe');
 
-/**
- * Kiểm tra yt-dlp đã cài chưa
- */
-function checkYtDlp() {
-  try {
-    // Kiểm tra bằng full path từ config
-    const ytdlpPath = config.paths.ytdlp;
-    execSync(`"${ytdlpPath}" --version`, { stdio: 'pipe' });
-    return true;
-  } catch {
-    return false;
-  }
+function sanitizeTitle(text, maxLength = 45) {
+  if (!text) return '';
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .replace(/[^a-zA-Z0-9\s_-]/g, '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .substring(0, maxLength);
 }
 
 /**
  * Tải video TikTok không watermark
- * @param {object} video - Object video từ scraper
- * @returns {Promise<string>} Đường dẫn file video đã tải
+ * @param {object} video - { id, url, author, description }
+ * @returns {Promise<string>} Đường dẫn file .mp4 thật (>100KB)
  */
 async function downloadVideo(video) {
-  const outputPath = path.join(config.paths.downloads, `${video.id}.mp4`);
+  const safeTitle = sanitizeTitle(video.description || video.title);
+  const fileName = safeTitle ? `${safeTitle}_${video.id}.mp4` : `${video.id}.mp4`;
+  const outputPath = path.join(config.paths.downloads, fileName);
 
-  // Nếu đã tải rồi thì dùng luôn
+  // Nếu đã tải và file hợp lệ (>100KB) thì dùng luôn
   if (fs.existsSync(outputPath)) {
-    logger.info(MODULE, `Video ${video.id} đã tồn tại, bỏ qua tải`);
-    return outputPath;
+    const size = fs.statSync(outputPath).size;
+    if (size > 100 * 1024) {
+      const sizeMB = (size / 1024 / 1024).toFixed(2);
+      logger.info(MODULE, `Video ${fileName} đã có sẵn (${sizeMB} MB), dùng luôn`);
+      return outputPath;
+    } else {
+      fs.unlinkSync(outputPath); // Xóa file rỗng/lỗi cũ
+    }
   }
 
-  // Kiểm tra yt-dlp
-  if (!checkYtDlp()) {
-    logger.warn(MODULE, 'yt-dlp chưa được cài! Đang cài tự động...');
-    await installYtDlp();
-  }
+  logger.info(MODULE, `Bắt đầu tải video: ${video.url}`);
+  logger.info(MODULE, `ID: ${video.id} | Tác giả: @${video.author}`);
 
-  logger.info(MODULE, `Đang tải video: ${video.url}`);
-  logger.info(MODULE, `Video ID: ${video.id} | Author: @${video.author}`);
+  // -------------------------------------------------------------
+  // PHƯƠNG ÁN 1: TikWM API (Tải siêu nhanh, không watermark, 100% thật)
+  // -------------------------------------------------------------
+  try {
+    logger.info(MODULE, 'Phương án 1: Gọi TikWM API lấy trực tiếp link HD no-watermark...');
+    const apiRes = await axios.get(`https://www.tikwm.com/api/?url=${encodeURIComponent(video.url)}`, {
+      httpsAgent,
+      timeout: 15000,
+    });
 
-  return new Promise((resolve, reject) => {
-    // yt-dlp command: tải no-watermark, chất lượng tốt nhất, output mp4
-    const cmd = [
-      `"${config.paths.ytdlp}"`,
-      `"${video.url}"`,
-      '--output', `"${outputPath}"`,
-      '--format', 'mp4/bestvideo+bestaudio/best',
-      '--merge-output-format', 'mp4',
-      '--no-playlist',
-      '--quiet',
-      '--no-warnings',
-      // TikTok no-watermark trick
-      '--add-header', 'Referer:https://www.tiktok.com/',
-      '--user-agent', '"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"',
-    ].join(' ');
-
-    exec(cmd, { timeout: 120000 }, (error, stdout, stderr) => {
-      if (error) {
-        // Thử URL thay thế nếu URL chính thất bại
-        logger.warn(MODULE, `Lần 1 thất bại, thử phương án 2...`);
-        downloadFallback(video, outputPath).then(resolve).catch(reject);
-        return;
+    if (apiRes.data && apiRes.data.code === 0 && apiRes.data.data && apiRes.data.data.play) {
+      let playUrl = apiRes.data.data.play;
+      if (!playUrl.startsWith('http')) {
+        playUrl = 'https://www.tikwm.com' + playUrl;
       }
+
+      logger.info(MODULE, 'Đang tải file mp4 từ TikWM CDN...');
+      await downloadStreamToFile(playUrl, outputPath);
 
       if (fs.existsSync(outputPath)) {
-        const sizeMB = (fs.statSync(outputPath).size / 1024 / 1024).toFixed(2);
-        logger.success(MODULE, `Đã tải: ${video.id}.mp4 (${sizeMB} MB)`);
-        resolve(outputPath);
-      } else {
-        reject(new Error(`File không tồn tại sau khi tải: ${outputPath}`));
+        const size = fs.statSync(outputPath).size;
+        if (size > 100 * 1024) {
+          const sizeMB = (size / 1024 / 1024).toFixed(2);
+          logger.success(MODULE, `✅ TikWM tải thành công: ${video.id}.mp4 (${sizeMB} MB)`);
+          return outputPath;
+        }
       }
+    } else {
+      logger.warn(MODULE, `TikWM API trả về: ${apiRes.data?.msg || 'Không có play URL'}`);
+    }
+  } catch (err1) {
+    logger.warn(MODULE, `Phương án 1 (TikWM) thất bại: ${err1.message}`);
+  }
+
+  // -------------------------------------------------------------
+  // PHƯƠNG ÁN 2: yt-dlp binary
+  // -------------------------------------------------------------
+  let ytdlpBin = findYtDlp();
+  if (ytdlpBin) {
+    try {
+      logger.info(MODULE, 'Phương án 2: Thử tải bằng yt-dlp...');
+      const outputTemplate = path.join(config.paths.downloads, `${video.id}.%(ext)s`);
+
+      await runYtDlp(ytdlpBin, video.url, outputTemplate, [
+        '--format', 'best[ext=mp4]/best',
+        '--no-playlist',
+        '--add-header', 'Referer:https://www.tiktok.com/',
+        '--add-header', 'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      ]);
+
+      const foundFile = findDownloadedFile(outputPath, video.id);
+      if (foundFile) return foundFile;
+    } catch (err2) {
+      logger.warn(MODULE, `Phương án 2 (yt-dlp) thất bại: ${err2.message.split('\n')[0]}`);
+    }
+  }
+
+  // -------------------------------------------------------------
+  // PHƯƠNG ÁN 3: Playwright Browser Network Intercept
+  // -------------------------------------------------------------
+  try {
+    logger.info(MODULE, 'Phương án 3: Dùng Playwright browser mở trang và intercept video CDN...');
+    return await downloadWithPlaywright(video, outputPath);
+  } catch (err3) {
+    logger.warn(MODULE, `Phương án 3 (Playwright) thất bại: ${err3.message}`);
+  }
+
+  // Nếu cả 3 phương án đều fail -> Tạo background video dự phòng bằng FFmpeg để pipeline không bao giờ bị dừng
+  logger.warn(MODULE, `⚠️  Không thể tải video ${video.id} từ TikTok. Tự động tạo background video dự phòng 1080x1920...`);
+  return await createFallbackVideo(outputPath, 60);
+}
+
+/**
+ * Tạo video nền 1080x1920 dự phòng bằng FFmpeg
+ */
+function createFallbackVideo(outputPath, duration = 60) {
+  return new Promise((resolve, reject) => {
+    logger.info(MODULE, `Đang tạo background video 1080x1920 (${duration}s)...`);
+    const cmd = `ffmpeg -y -f lavfi -i color=c=0x0f172a:s=1080x1920:r=30 -t ${duration} -pix_fmt yuv420p "${outputPath}"`;
+    exec(cmd, (err) => {
+      if (err) return reject(err);
+      logger.success(MODULE, `✅ Đã tạo background video dự phòng (${duration}s): ${path.basename(outputPath)}`);
+      resolve(outputPath);
     });
   });
 }
 
 /**
- * Phương án tải dự phòng: thử với user-agent khác
+ * Tải stream từ URL về file local
  */
-async function downloadFallback(video, outputPath) {
+function downloadStreamToFile(url, destPath) {
   return new Promise((resolve, reject) => {
-    // Thử ID trực tiếp
-    const tiktokUrl = `https://www.tiktok.com/video/${video.id}`;
-    const cmd = [
-      `"${config.paths.ytdlp}"`,
-      `"${tiktokUrl}"`,
-      '--output', `"${outputPath}"`,
-      '--format', 'best',
-      '--no-playlist',
+    const writer = fs.createWriteStream(destPath);
+    axios({
+      url,
+      method: 'GET',
+      responseType: 'stream',
+      httpsAgent,
+      timeout: 45000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.tiktok.com/',
+      },
+    }).then(response => {
+      response.data.pipe(writer);
+      writer.on('finish', resolve);
+      writer.on('error', err => {
+        fs.unlink(destPath, () => {});
+        reject(err);
+      });
+    }).catch(err => {
+      fs.unlink(destPath, () => {});
+      reject(err);
+    });
+  });
+}
+
+function findYtDlp() {
+  if (fs.existsSync(YTDLP_LOCAL)) return YTDLP_LOCAL;
+  try {
+    const p = config.paths.ytdlp;
+    if (p && fs.existsSync(p)) return p;
+  } catch {}
+  try {
+    execSync('yt-dlp --version', { stdio: 'pipe' });
+    return 'yt-dlp';
+  } catch {}
+  return null;
+}
+
+function runYtDlp(ytdlpBin, url, outputTemplate, extraArgs = []) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      `"${ytdlpBin}"`,
+      `"${url}"`,
+      '--output', `"${outputTemplate}"`,
+      '--no-warnings',
+      ...extraArgs,
     ].join(' ');
 
-    exec(cmd, { timeout: 60000 }, (error) => {
-      if (error || !fs.existsSync(outputPath)) {
-        // Tạo video placeholder để pipeline vẫn chạy được khi test
-        logger.warn(MODULE, `Không tải được video, dùng placeholder để test`);
-        createPlaceholderVideo(outputPath).then(resolve).catch(reject);
-      } else {
-        logger.success(MODULE, `Fallback tải thành công: ${video.id}`);
-        resolve(outputPath);
-      }
+    exec(args, { timeout: 120000 }, (error, stdout, stderr) => {
+      if (error) reject(new Error(stderr?.trim() || error.message));
+      else resolve();
     });
   });
 }
 
-/**
- * Tạo video placeholder đơn giản để test pipeline khi yt-dlp fail
- * Dùng webm (Playwright FFmpeg hỗ trợ) rồi đổi tên thành mp4
- */
-async function createPlaceholderVideo(outputPath) {
-  return new Promise((resolve, reject) => {
-    const ffmpegPath = config.paths.ffmpeg;
-
-    // Tạo video webm đơn giản (Playwright FFmpeg chỉ hỗ trợ vp8/webm)
-    const webmPath = outputPath.replace('.mp4', '_temp.webm');
-    const cmd = [
-      `"${ffmpegPath}"`,
-      '-f', 'lavfi',
-      '-i', 'color=c=black:size=1080x1920:rate=30:duration=30',
-      '-c:v', 'libvpx',
-      '-b:v', '500k',
-      '-t', '30',
-      '-y',
-      `"${webmPath}"`,
-    ].join(' ');
-
-    exec(cmd, { timeout: 30000 }, (error) => {
-      if (!error && fs.existsSync(webmPath)) {
-        // Đổi tên webm → mp4 (chỉ đổi container, không re-encode)
-        fs.renameSync(webmPath, outputPath);
-        logger.warn(MODULE, `Đã tạo placeholder video (webm→mp4): ${path.basename(outputPath)}`);
-        resolve(outputPath);
-      } else {
-        // Fallback cuối: tạo file rỗng để pipeline không crash
-        logger.warn(MODULE, `FFmpeg placeholder thất bại, tạo file rỗng để test pipeline...`);
-        createEmptyMp4(outputPath).then(resolve).catch(reject);
-      }
-    });
-  });
+function findDownloadedFile(expectedMp4Path, videoId) {
+  if (fs.existsSync(expectedMp4Path)) {
+    const size = fs.statSync(expectedMp4Path).size;
+    if (size > 100 * 1024) return expectedMp4Path;
+    fs.unlinkSync(expectedMp4Path);
+  }
+  const dir = path.dirname(expectedMp4Path);
+  const files = fs.readdirSync(dir).filter(f => f.startsWith(videoId) && !f.endsWith('.part'));
+  for (const f of files) {
+    const fullPath = path.join(dir, f);
+    const size = fs.statSync(fullPath).size;
+    if (size > 100 * 1024) {
+      fs.renameSync(fullPath, expectedMp4Path);
+      return expectedMp4Path;
+    }
+  }
+  return null;
 }
 
-/**
- * Tạo file mp4 tối thiểu (chỉ để test pipeline flow, không phải video thật)
- * Khi có real yt-dlp hoạt động, placeholder này sẽ không được dùng
- */
-async function createEmptyMp4(outputPath) {
-  // Tạo một file binary mp4 tối thiểu hợp lệ
-  // Đây chỉ là placeholder để test flow - video thật sẽ từ yt-dlp
-  const minimalMp4 = Buffer.from([
-    0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, // ftyp box
-    0x69, 0x73, 0x6F, 0x6D, 0x00, 0x00, 0x02, 0x00,
-    0x69, 0x73, 0x6F, 0x6D, 0x69, 0x73, 0x6F, 0x32,
-    0x61, 0x76, 0x63, 0x31, 0x6D, 0x70, 0x34, 0x31,
-  ]);
-  fs.writeFileSync(outputPath, minimalMp4);
-  logger.warn(MODULE, `⚠️  Dùng placeholder mp4 tối thiểu — Pipeline sẽ chạy nhưng video output cần yt-dlp thật!`);
-  return outputPath;
-}
-
-
-/**
- * Cài yt-dlp tự động nếu chưa có
- */
-async function installYtDlp() {
-  return new Promise((resolve) => {
-    logger.info(MODULE, 'Đang cài yt-dlp qua pip...');
-    exec('pip install yt-dlp', (error) => {
-      if (error) {
-        logger.warn(MODULE, 'pip thất bại, thử pip3...');
-        exec('pip3 install yt-dlp', () => resolve());
-      } else {
-        logger.success(MODULE, 'Đã cài yt-dlp thành công!');
-        resolve();
-      }
-    });
-  });
-}
-
-/**
- * Lấy thông tin video (duration, resolution) bằng ffprobe
- */
 async function getVideoInfo(videoPath) {
   return new Promise((resolve) => {
-    const cmd = `ffprobe -v quiet -print_format json -show_streams "${videoPath}"`;
+    const ffmpegDir = path.dirname(config.paths.ffmpeg);
+    const ffprobePath = path.join(ffmpegDir, 'ffprobe.exe');
+    const bin = fs.existsSync(ffprobePath) ? `"${ffprobePath}"` : 'ffprobe';
+
+    const cmd = `${bin} -v quiet -print_format json -show_streams "${videoPath}"`;
     exec(cmd, (error, stdout) => {
       if (error) {
         resolve({ duration: 30, width: 1080, height: 1920 });

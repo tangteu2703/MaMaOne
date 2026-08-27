@@ -1,50 +1,85 @@
 // ==========================================
 // MODULE 4: VOICE GENERATOR (TTS)
-// Tạo giọng đọc AI Tiếng Việt bằng Edge-TTS (miễn phí)
+// Tạo giọng đọc AI Tiếng Việt chuẩn 100% (google-tts-api -> edge-tts)
+// QUAN TRỌNG: Tạo tiếng THẬT 100%, không dùng silent placeholder
 // ==========================================
-const { exec } = require('child_process');
+const gTTS = require('google-tts-api');
+const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
+const { exec } = require('child_process');
 const config = require('../../config/config');
 const logger = require('../logger');
 
 const MODULE = 'VoiceGen';
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 
 /**
- * Tạo file audio giọng đọc AI từ script
+ * Tạo file audio mp3 giọng đọc AI Tiếng Việt từ script
+ * @param {string} videoId - ID video
+ * @param {string} script - Kịch bản tiếng Việt cần đọc
+ * @returns {Promise<string>} Đường dẫn file audio .mp3
  */
 async function generateVoice(videoId, script) {
   const outputPath = path.join(config.paths.audio, `${videoId}.mp3`);
 
+  // Nếu đã tạo và file hợp lệ (>5KB) thì dùng luôn
   if (fs.existsSync(outputPath)) {
-    logger.info(MODULE, `Audio ${videoId} đã tồn tại, bỏ qua tạo giọng`);
-    return outputPath;
+    const size = fs.statSync(outputPath).size;
+    if (size > 5 * 1024) {
+      const sizeKB = (size / 1024).toFixed(1);
+      logger.info(MODULE, `Audio ${videoId}.mp3 đã có sẵn (${sizeKB} KB), dùng luôn`);
+      return outputPath;
+    } else {
+      fs.unlinkSync(outputPath);
+    }
   }
 
-  logger.info(MODULE, `Đang tạo giọng đọc AI: ${config.pipeline.voiceName}`);
+  logger.info(MODULE, `Đang tạo giọng đọc AI Tiếng Việt cho video: ${videoId}`);
 
-  // Phương án 1: edge-tts Python với SSL bypass
-  const result = await tryEdgeTTS(videoId, script, outputPath);
-  if (result) return result;
+  // -------------------------------------------------------------
+  // PHƯƠNG ÁN 1: google-tts-api (Cực nhanh, giọng đọc Tiếng Việt chuẩn, 100% tiếng THẬT)
+  // -------------------------------------------------------------
+  try {
+    logger.info(MODULE, 'Phương án 1: Tạo giọng đọc qua Google TTS API...');
+    const audioPath = await generateGoogleTTS(script, outputPath);
+    if (audioPath && fs.existsSync(audioPath) && fs.statSync(audioPath).size > 5000) {
+      const sizeKB = (fs.statSync(audioPath).size / 1024).toFixed(1);
+      logger.success(MODULE, `✅ Google TTS tạo giọng đọc thành công: ${videoId}.mp3 (${sizeKB} KB)`);
+      return audioPath;
+    }
+  } catch (err1) {
+    logger.warn(MODULE, `Phương án 1 (Google TTS) thất bại: ${err1.message}`);
+  }
+
+  // Phương án 2: Edge-TTS Python CLI
+  try {
+    logger.info(MODULE, 'Phương án 2: Thử tạo giọng đọc qua Edge-TTS...');
+    const result2 = await tryEdgeTTS(script, outputPath);
+    if (result2 && fs.existsSync(result2) && fs.statSync(result2).size > 5000) {
+      return result2;
+    }
+  } catch (err2) {
+    logger.warn(MODULE, `Phương án 2 (Edge-TTS) thất bại: ${err2.message}`);
+  }
 
   // Phương án 3: Google Translate TTS Fallback qua Node.js (Bỏ qua SSL cert)
-  logger.info(MODULE, 'Thử fallback sang Google TTS Node.js...');
+  logger.info(MODULE, 'Phương án 3: Thử fallback sang Google TTS Node.js direct...');
   const result3 = await tryGoogleTTS(videoId, script, outputPath);
-  if (result3) return result3;
+  if (result3 && fs.existsSync(result3) && fs.statSync(result3).size > 1000) {
+    return result3;
+  }
 
-  // Fallback: Tạo audio WAV silent bằng pure Node.js
-  logger.warn(MODULE, 'TTS hoàn toàn thất bại, tạo audio silent placeholder...');
-  return createSilentWav(outputPath, 60);
+  throw new Error(`Không thể tạo giọng đọc AI Tiếng Việt cho video ${videoId}.`);
 }
 
 /**
  * Google Translate TTS Node.js Fallback
  */
 async function tryGoogleTTS(videoId, script, outputPath) {
-  const https = require('https');
   return new Promise((resolve) => {
     try {
-      // Cắt script thành các câu dưới 200 ký tự cho Google TTS
       const sentences = script.match(/[^.!?]+[.!?]+/g) || [script];
       const chunks = [];
       let current = '';
@@ -104,121 +139,66 @@ async function tryGoogleTTS(videoId, script, outputPath) {
 }
 
 /**
- * edge-tts với SSL bypass qua biến môi trường Python
+ * Tạo giọng đọc Tiếng Việt qua Google TTS API
  */
-async function tryEdgeTTS(videoId, script, outputPath) {
+async function generateGoogleTTS(text, outputPath) {
+  const cleanText = text.replace(/[*_#~`]/g, '').trim();
+  if (!cleanText) throw new Error('Văn bản kịch bản rỗng');
+
+  // Lấy danh sách URL audio (Google TTS tự ngắt dòng < 200 ký tự)
+  const audioUrls = gTTS.getAllAudioUrls(cleanText, {
+    lang: 'vi',
+    slow: false,
+    host: 'https://translate.google.com',
+    timeout: 15000,
+  });
+
+  logger.info(MODULE, `Chia kịch bản thành ${audioUrls.length} đoạn audio...`);
+
+  const audioBuffers = [];
+  for (let i = 0; i < audioUrls.length; i++) {
+    const item = audioUrls[i];
+    const res = await axios.get(item.url, {
+      responseType: 'arraybuffer',
+      httpsAgent,
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    });
+    audioBuffers.push(Buffer.from(res.data));
+  }
+
+  const combinedBuffer = Buffer.concat(audioBuffers);
+  fs.writeFileSync(outputPath, combinedBuffer);
+  return outputPath;
+}
+
+/**
+ * Fallback Edge-TTS
+ */
+function tryEdgeTTS(script, outputPath) {
   return new Promise((resolve) => {
-    const tempScriptFile = outputPath.replace('.mp3', '_script.txt');
-    fs.writeFileSync(tempScriptFile, script, 'utf8');
+    const tempTxt = outputPath.replace('.mp3', '_script.txt');
+    fs.writeFileSync(tempTxt, script, 'utf8');
 
     const cmd = [
       `"${config.paths.edgeTts}"`,
-      '--voice', config.pipeline.voiceName,
-      '--file', `"${tempScriptFile}"`,
+      '--voice', config.pipeline.voiceName || 'vi-VN-HoaiMyNeural',
+      '--file', `"${tempTxt}"`,
       '--write-media', `"${outputPath}"`,
       '--rate', '+10%',
     ].join(' ');
 
-    const env = {
-      ...process.env,
-      PYTHONHTTPSVERIFY: '0',
-      REQUESTS_CA_BUNDLE: '',
-      SSL_CERT_FILE: '',
-    };
-
-    exec(cmd, { timeout: 60000, env }, (error) => {
-      try { fs.unlinkSync(tempScriptFile); } catch {}
-
-      if (!error && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
-        logger.success(MODULE, `Edge-TTS thành công! (${(fs.statSync(outputPath).size / 1024).toFixed(0)} KB)`);
+    exec(cmd, { timeout: 45000 }, (error) => {
+      try { fs.unlinkSync(tempTxt); } catch {}
+      if (!error && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 5000) {
         resolve(outputPath);
       } else {
-        logger.warn(MODULE, `Edge-TTS Python thất bại: ${error?.message?.split('\n')[0] || 'SSL blocked'}`);
         resolve(null);
       }
     });
   });
-}
-
-/**
- * edge-tts qua Python script để có thể disable SSL verify hoàn toàn
- */
-async function tryEdgeTTSWithCertifi(videoId, script, outputPath) {
-  return new Promise((resolve) => {
-    const tempScript = outputPath.replace('.mp3', '_tts.py');
-    const tempTxt = outputPath.replace('.mp3', '_script.txt');
-
-    fs.writeFileSync(tempTxt, script, 'utf8');
-
-    const pyCode = `
-import ssl
-import asyncio
-ssl._create_default_https_context = ssl._create_unverified_context
-
-import edge_tts
-
-async def main():
-    text = open(r"${tempTxt.replace(/\\/g, '\\\\')}", encoding='utf-8').read()
-    communicate = edge_tts.Communicate(text, "${config.pipeline.voiceName}", rate="+10%")
-    await communicate.save(r"${outputPath.replace(/\\/g, '\\\\')}")
-
-asyncio.run(main())
-`.trim();
-
-    fs.writeFileSync(tempScript, pyCode, 'utf8');
-
-    const pythonExe = config.paths.ytdlp.replace('Scripts\\yt-dlp.exe', 'python.exe');
-    exec(`"${pythonExe}" "${tempScript}"`, { timeout: 60000 }, (error) => {
-      try { fs.unlinkSync(tempScript); fs.unlinkSync(tempTxt); } catch {}
-
-      if (!error && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
-        logger.success(MODULE, `Edge-TTS Python script thành công!`);
-        resolve(outputPath);
-      } else {
-        logger.warn(MODULE, `Edge-TTS Python script thất bại: ${error?.message?.split('\n')[0] || 'unknown'}`);
-        resolve(null);
-      }
-    });
-  });
-}
-
-/**
- * Tạo file WAV silent bằng pure Node.js (không cần FFmpeg)
- */
-function createSilentWav(outputPath, durationSeconds = 60) {
-  const wavPath = outputPath.replace('.mp3', '.wav');
-  const sampleRate = 22050;
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const numSamples = sampleRate * durationSeconds;
-  const dataSize = numSamples * numChannels * (bitsPerSample / 8);
-
-  const buffer = Buffer.alloc(44 + dataSize, 0);
-
-  // RIFF chunk
-  buffer.write('RIFF', 0, 'ascii');
-  buffer.writeUInt32LE(36 + dataSize, 4);
-  buffer.write('WAVE', 8, 'ascii');
-
-  // fmt chunk
-  buffer.write('fmt ', 12, 'ascii');
-  buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20);
-  buffer.writeUInt16LE(numChannels, 22);
-  buffer.writeUInt32LE(sampleRate, 24);
-  buffer.writeUInt32LE(sampleRate * numChannels * bitsPerSample / 8, 28);
-  buffer.writeUInt16LE(numChannels * bitsPerSample / 8, 32);
-  buffer.writeUInt16LE(bitsPerSample, 34);
-
-  // data chunk
-  buffer.write('data', 36, 'ascii');
-  buffer.writeUInt32LE(dataSize, 40);
-
-  fs.writeFileSync(wavPath, buffer);
-  fs.renameSync(wavPath, outputPath);
-
-  logger.warn(MODULE, `⚠️ Dùng silent WAV placeholder (${durationSeconds}s) — TTS bị chặn SSL!`);
-  return outputPath;
 }
 
 module.exports = { generateVoice };

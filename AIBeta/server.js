@@ -11,6 +11,7 @@ const { WebSocketServer } = require('ws');
 const logger = require('./src/logger');
 const config = require('./config/config');
 const { runPipeline } = require('./pipeline');
+const { loadAndSplitStory, saveStoryToFile, getEpisodesProgress } = require('./src/story/storyReader');
 const { generateAIVideoPipeline } = require('./src/aiGenerator/constructionGenerator');
 const { generateAIVideoMotionPipeline, checkComfyUIStatus } = require('./src/aiGenerator/comfyUIMotionGenerator');
 
@@ -87,10 +88,13 @@ function getConfigData() {
   return {
     apifyToken: process.env.APIFY_API_TOKEN || '',
     geminiKey: process.env.GEMINI_API_KEY || '',
-    hashtags: process.env.HASHTAGS || 'coding,programming,aitools',
+    hashtags: process.env.HASHTAGS || 'satisfying,building,construction,craft,woodworking,lego,diy',
     maxVideos: process.env.MAX_VIDEOS_PER_RUN || '3',
-    minViews: process.env.MIN_VIEW_COUNT || '50000',
+    minViews: process.env.MIN_VIEW_COUNT || '10000',
     voiceName: process.env.VOICE_NAME || 'vi-VN-HoaiMyNeural',
+    storyTitle: process.env.STORY_TITLE || 'Câu Chuyện Của Tôi',
+    wordsPerEpisode: process.env.WORDS_PER_EPISODE || '200',
+    musicVolume: process.env.MUSIC_VOLUME || '0.40',
   };
 }
 
@@ -106,7 +110,7 @@ app.get('/api/config', (req, res) => {
 
 // 3. Save Config
 app.post('/api/config', (req, res) => {
-  const { apifyToken, geminiKey, hashtags, maxVideos, minViews, voiceName } = req.body;
+  const { apifyToken, geminiKey, hashtags, maxVideos, minViews, voiceName, storyTitle, wordsPerEpisode, musicVolume } = req.body;
   const envPath = path.join(__dirname, '.env');
 
   try {
@@ -122,9 +126,11 @@ app.post('/api/config', (req, res) => {
       MAX_VIDEOS_PER_RUN: maxVideos,
       MIN_VIEW_COUNT: minViews,
       VOICE_NAME: voiceName,
+      STORY_TITLE: storyTitle,
+      WORDS_PER_EPISODE: wordsPerEpisode,
+      MUSIC_VOLUME: musicVolume,
     };
 
-    let lines = envContent.split('\n');
     Object.keys(updates).forEach((key) => {
       if (updates[key] !== undefined) {
         const regex = new RegExp(`^${key}=.*$`, 'm');
@@ -147,13 +153,73 @@ app.post('/api/config', (req, res) => {
   }
 });
 
-// 4. Run Pipeline Manual Trigger
+// 4. GET Story — Lấy thông tin truyện hiện tại & danh sách tập
+app.get('/api/story', (req, res) => {
+  try {
+    const storyData = loadAndSplitStory(null, null);
+    res.json({
+      success: true,
+      storyTitle: storyData.title,
+      totalEpisodes: storyData.totalEpisodes,
+      totalWords: storyData.totalWords,
+      episodes: storyData.episodes.map(ep => ({
+        index: ep.index,
+        title: ep.title,
+        wordCount: ep.wordCount,
+        estimatedDurationSeconds: ep.estimatedDurationSeconds,
+        preview: ep.content.substring(0, 120) + '...',
+      })),
+      progress: getEpisodesProgress(storyData.title.replace(/\s+/g, '_')),
+    });
+  } catch (err) {
+    res.json({ success: false, error: err.message, storyTitle: null, totalEpisodes: 0, episodes: [] });
+  }
+});
+
+// 5. POST Story — Lưu truyện mới từ Dashboard UI (paste nội dung)
+app.post('/api/story', (req, res) => {
+  const { storyContent, storyTitle } = req.body;
+  if (!storyContent || storyContent.trim().length < 50) {
+    return res.status(400).json({ success: false, error: 'Nội dung truyện quá ngắn hoặc rỗng!' });
+  }
+  try {
+    const title = (storyTitle || 'story').trim();
+    const savedPath = saveStoryToFile(storyContent, title);
+
+    // Cập nhật env STORY_FILE
+    process.env.STORY_FILE = savedPath;
+    process.env.STORY_TITLE = title;
+    // Cập nhật config runtime
+    config.story.storyFile = savedPath;
+    config.story.activeStoryTitle = title;
+
+    // Phân đoạn để trả về preview
+    const { splitStoryIntoEpisodes } = require('./src/story/storyReader');
+    const episodes = splitStoryIntoEpisodes(storyContent);
+
+    logger.success('Dashboard', `Truyện mới: "${title}" — ${episodes.length} tập`);
+    broadcast('story_updated', { storyTitle: title, totalEpisodes: episodes.length });
+
+    res.json({
+      success: true,
+      message: `Đã lưu truyện "${title}" — ${episodes.length} tập sẵn sàng!`,
+      storyTitle: title,
+      totalEpisodes: episodes.length,
+      savedPath,
+    });
+  } catch (err) {
+    logger.error('Dashboard', `Lỗi lưu truyện: ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. Run Pipeline Manual Trigger
 app.post('/api/run', async (req, res) => {
-  if (systemState.isRunning) {
+  const { hashtags, maxVideos, minViews, startEpisode, wordsPerEpisode, storyContent, storyTitle, force } = req.body || {};
+
+  if (systemState.isRunning && !force) {
     return res.status(400).json({ success: false, message: 'Pipeline đang chạy rồi!' });
   }
-
-  const { hashtags, maxVideos } = req.body || {};
 
   systemState.isRunning = true;
   systemState.currentStep = 'Khởi động Pipeline...';
@@ -167,24 +233,33 @@ app.post('/api/run', async (req, res) => {
     try {
       logger.info('Dashboard', 'Kích hoạt pipeline từ Web Dashboard...');
       const results = await runPipeline({
-        hashtags: hashtags ? hashtags.split(',') : undefined,
-        maxVideos: maxVideos ? parseInt(maxVideos) : undefined,
+        hashtags: hashtags ? (Array.isArray(hashtags) ? hashtags : hashtags.split(',')) : undefined,
+        maxEpisodes: maxVideos ? parseInt(maxVideos) : undefined,
+        minViews: minViews !== undefined ? parseInt(minViews) : undefined,
+        startEpisode: startEpisode ? parseInt(startEpisode) : undefined,
+        wordsPerEpisode: wordsPerEpisode ? parseInt(wordsPerEpisode) : undefined,
+        storyContent: storyContent || undefined,
+        storyTitle: storyTitle || undefined,
       });
 
-      systemState.stats.processedToday += results.length;
-      systemState.stats.successToday += results.filter(r => r.success).length;
-      systemState.stats.failedToday += results.filter(r => !r.success).length;
+      const list = results || [];
+      systemState.stats.processedToday += list.length;
+      systemState.stats.successToday += list.filter(r => r.success).length;
+      systemState.stats.failedToday += list.filter(r => !r.success).length;
 
-      results.forEach(r => {
+      list.forEach(r => {
         systemState.videoHistory.unshift({
           id: r.videoId,
           time: new Date().toLocaleTimeString('vi-VN'),
           status: r.success ? 'success' : 'failed',
           steps: r.steps,
           error: r.error,
-          videoFile: `/output/${r.videoId}_final.mp4`
+          script: r.scriptBody || r.script,
+          title: `Tập ${r.episodeIndex || 1}`,
+          videoFile: `/output/${r.outputFile || r.videoId + '_final.mp4'}`,
         });
       });
+
 
     } catch (err) {
       logger.error('Dashboard', `Lỗi chạy pipeline: ${err.message}`);
@@ -195,6 +270,14 @@ app.post('/api/run', async (req, res) => {
       broadcast('history_update', systemState.videoHistory);
     }
   }, 500);
+});
+
+// Endpoint để reset trạng thái nếu bị kẹt
+app.post('/api/reset', (req, res) => {
+  systemState.isRunning = false;
+  systemState.currentStep = 'Idle';
+  broadcast('state_change', systemState);
+  res.json({ success: true, message: 'Đã reset trạng thái hệ thống về Idle!' });
 });
 
 // 4.5. AI Video Generator Trigger (0đ - Construction & Storytelling)
@@ -277,7 +360,7 @@ app.get('/api/ai-generator/history', (req, res) => {
   });
 });
 
-// 6. Get Processed Videos
+// 6. Get Processed Videos (Kho Video Output)
 app.get('/api/videos', (req, res) => {
   try {
     const outputDir = config.paths.output;
@@ -296,6 +379,34 @@ app.get('/api/videos', (req, res) => {
         });
     }
     res.json({ success: true, videos: files, history: systemState.videoHistory });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 6. Get Pipeline Files (Downloads & Outputs cho Master Table)
+app.get('/api/pipeline-files', (req, res) => {
+  try {
+    const downloadsDir = config.paths.downloads;
+    const outputDir = config.paths.output;
+
+    const downloadFiles = fs.existsSync(downloadsDir)
+      ? fs.readdirSync(downloadsDir).filter(f => f.endsWith('.mp4')).map(f => ({
+          filename: f,
+          url: `/downloads/${f}`,
+          sizeMB: (fs.statSync(path.join(downloadsDir, f)).size / 1024 / 1024).toFixed(2),
+        }))
+      : [];
+
+    const outputFiles = fs.existsSync(outputDir)
+      ? fs.readdirSync(outputDir).filter(f => f.endsWith('.mp4')).map(f => ({
+          filename: f,
+          url: `/output/${f}`,
+          sizeMB: (fs.statSync(path.join(outputDir, f)).size / 1024 / 1024).toFixed(2),
+        }))
+      : [];
+
+    res.json({ success: true, downloads: downloadFiles, outputs: outputFiles });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

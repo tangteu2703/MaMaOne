@@ -146,19 +146,25 @@
 
       <button class="nav-tab flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 whitespace-nowrap" data-tab="progress">
         <i data-lucide="activity" class="w-4 h-4 text-cyan-400"></i>
-        <span>Tiến Trình Realtime & Danh Sách</span>
+        <span>Tiến Trình Realtime</span>
         <span id="live-progress-badge" class="px-2 py-0.5 text-xs bg-cyan-500/20 text-cyan-300 rounded-full font-bold">0%</span>
+      </button>
+
+      <button class="nav-tab flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 whitespace-nowrap" data-tab="story">
+        <i data-lucide="book-open" class="w-4 h-4 text-amber-400"></i>
+        <span>Truyện Audio</span>
+        <span id="story-episode-badge" class="px-2 py-0.5 text-xs bg-amber-500/20 text-amber-300 rounded-full font-bold">0 tập</span>
       </button>
 
       <button class="nav-tab flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 whitespace-nowrap" data-tab="videos">
         <i data-lucide="film" class="w-4 h-4"></i>
-        <span>Kho Video Output</span>
+        <span>Kho Video</span>
         <span id="video-count-badge" class="ml-1 px-2 py-0.5 text-xs bg-indigo-500/20 text-indigo-300 rounded-full font-bold">0</span>
       </button>
 
       <button class="nav-tab flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 whitespace-nowrap" data-tab="config">
         <i data-lucide="sliders" class="w-4 h-4"></i>
-        <span>Cấu Hình API Keys</span>
+        <span>Cấu Hình</span>
       </button>
     </nav>
 
@@ -394,52 +400,126 @@
         </div>
       </div>
 
-      <!-- DANH SÁCH VIDEO CÀO ĐƯỢC (SCRAPED QUEUE TABLE) -->
+      <!-- BẢNG QUẢN LÝ MASTER PIPELINE TẬP TRUNG (5 CỘT TRẠNG THÁI) -->
       <div class="glass-card rounded-2xl p-5 border border-slate-800 space-y-4">
         <div class="flex items-center justify-between border-b border-slate-800 pb-3">
           <div class="flex items-center gap-2">
-            <i data-lucide="list-filter" class="w-5 h-5 text-cyan-400"></i>
-            <h3 class="text-sm font-bold text-white">Danh Sách Video Cào Được (Scraped Queue)</h3>
+            <i data-lucide="table" class="w-5 h-5 text-indigo-400"></i>
+            <h3 class="text-base font-bold text-white">Bảng Quản Lý Tiến Trình Pipeline Video (Master Table)</h3>
           </div>
-          <span class="text-xs text-slate-400 font-mono">Tự động cập nhật từ Apify API</span>
+          <span class="text-xs text-slate-400 font-mono">Tự động cập nhật Real-time từ WebSocket</span>
         </div>
 
         <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs text-slate-300">
-            <thead class="bg-slate-900/80 text-slate-400 font-semibold border-b border-slate-800 uppercase text-[10px] tracking-wider">
+          <table class="w-full text-left text-xs text-slate-300 border-collapse">
+            <thead class="bg-slate-900/90 text-slate-300 font-semibold border-b border-slate-800 uppercase text-[11px] tracking-wider">
               <tr>
-                <th class="p-3">#</th>
-                <th class="p-3">Video ID / Author</th>
-                <th class="p-3">Mô Tả Gốc</th>
-                <th class="p-3 text-right">Views Gốc</th>
-                <th class="p-3 text-center">Trạng Thái Xử Lý</th>
+                <th class="p-3 w-10 text-center">#</th>
+                <th class="p-3 min-w-[220px]">1. Video Gốc & Download</th>
+                <th class="p-3 min-w-[280px]">2. Nội Dung Tập Truyện</th>
+                <th class="p-3 min-w-[180px]">3. Voice & Subtitle</th>
+                <th class="p-3 min-w-[200px]">4. Video Hoàn Chỉnh (Final)</th>
+                <th class="p-3 min-w-[140px] text-center">5. Đăng TikTok</th>
               </tr>
             </thead>
-            <tbody id="scraped-queue-tbody" class="divide-y divide-slate-800/60 font-mono">
+            <tbody id="master-pipeline-tbody" class="divide-y divide-slate-800/80 font-sans">
               <tr>
-                <td colspan="5" class="p-4 text-center text-slate-500 font-sans">
-                  Chưa có dữ liệu lượt cào. Bấm "CHẠY PIPELINE NGAY" để cào video trending!
+                <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
+                  Chưa có video nào trong danh sách. Bấm <b>"CHẠY PIPELINE NGAY"</b> để bắt đầu cào và xử lý video!
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
+    </section>
 
-      <!-- AI SCRIPT PREVIEW & LIST CARD -->
-      <div class="glass-card rounded-2xl p-6 border border-slate-800 space-y-4">
-        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-          <h3 class="text-sm font-bold text-white flex items-center gap-2">
-            <i data-lucide="file-text" class="w-4 h-4 text-purple-400"></i>
-            Danh Sách Kịch Bản AI Tiếng Việt Đã Dịch (Gemini AI)
-          </h3>
-          <span id="script-status-tag" class="text-xs text-slate-400 font-mono">Đang chờ AI...</span>
+    <!-- TAB: TRUYEN AUDIO MANAGEMENT -->
+    <section id="tab-story" class="tab-content hidden space-y-6">
+
+      <!-- Story Info Banner -->
+      <div class="glass-card rounded-2xl p-5 border border-amber-500/20 bg-amber-950/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-11 h-11 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-amber-400 flex-shrink-0">
+            <i data-lucide="book-open" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h2 id="story-title-display" class="text-base font-bold text-white">Chưa có truyện nào</h2>
+            <p id="story-meta-display" class="text-xs text-slate-400 mt-0.5">Dán nội dung truyện vào ô phía dưới để bắt đầu</p>
+          </div>
         </div>
-        
-        <div id="script-preview-container" class="space-y-3">
-          <div class="bg-slate-950/80 p-4 rounded-xl border border-slate-800/80 space-y-2">
-            <h4 id="script-preview-title" class="text-sm font-bold text-indigo-300">Tiêu đề: (Đang tạo...)</h4>
-            <p id="script-preview-body" class="text-xs text-slate-300 leading-relaxed font-sans italic">Kịch bản chi tiết sẽ hiển thị tại đây ngay khi Gemini AI hoàn thành bước dịch và rewrite...</p>
+        <button id="btn-load-story" class="flex-shrink-0 px-4 py-2 bg-amber-600/20 hover:bg-amber-600/35 text-amber-300 border border-amber-500/30 text-xs font-semibold rounded-xl transition flex items-center gap-2">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          Tải lại truyện
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Left: Paste Story Form -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-800/80 space-y-4">
+          <h3 class="text-sm font-bold text-white flex items-center gap-2">
+            <i data-lucide="file-text" class="w-4 h-4 text-amber-400"></i>
+            Nhập Nội Dung Truyện
+          </h3>
+
+          <div class="space-y-3">
+            <div class="space-y-1.5">
+              <label class="text-xs font-semibold text-slate-300">Tên truyện</label>
+              <input type="text" id="input-story-title" placeholder="Ví dụ: Cô Tiểu Thư Trùng Sinh Báo Thù" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition">
+            </div>
+
+            <div class="space-y-1.5">
+              <label class="text-xs font-semibold text-slate-300">Nội dung truyện (dán toàn bộ hoặc 1 chương)</label>
+              <textarea id="input-story-content" rows="11" placeholder="Dán nội dung truyện vào đây...&#10;&#10;Ví dụ: Chương 1: Ngày Trùng Sinh&#10;&#10;Ánh mắt cô từ từ mở ra trong bóng tối lạnh giá. Mùi máu tanh hôi quen thuộc khiến tim cô thắt lại..." class="w-full px-4 py-3 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm font-mono focus:outline-none focus:border-amber-500 transition resize-none leading-relaxed"></textarea>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-slate-300">Số từ/tập (~200 = 70s)</label>
+                <input type="number" id="input-words-per-ep" value="200" min="100" max="500" step="25" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition">
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-slate-300">Bắt đầu từ tập</label>
+                <input type="number" id="input-start-episode" value="1" min="1" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-slate-300">Số tập render lần này</label>
+                <input type="number" id="input-max-episodes" value="3" min="1" max="20" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition">
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-slate-300">Âm lượng nhạc Lofi (0-1)</label>
+                <input type="number" id="input-music-vol" value="0.40" min="0" max="1" step="0.05" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition">
+              </div>
+            </div>
+          </div>
+
+          <div class="flex gap-3 pt-1">
+            <button id="btn-save-story" class="w-full py-3 px-4 bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg">
+              <i data-lucide="save" class="w-4 h-4"></i>
+              Lưu &amp; Phân Đoạn Truyện
+            </button>
+          </div>
+          <p id="story-save-status" class="text-xs font-medium text-emerald-400 min-h-[18px]"></p>
+        </div>
+
+        <!-- Right: Episodes List -->
+        <div class="glass-card rounded-2xl p-5 border border-slate-800/80 space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <i data-lucide="list" class="w-4 h-4 text-amber-400"></i>
+              Danh Sách Tập Truyện
+            </h3>
+            <span id="total-episodes-badge" class="px-2.5 py-1 text-xs bg-amber-500/15 text-amber-300 border border-amber-500/25 rounded-full font-bold">0 tập</span>
+          </div>
+
+          <div id="episodes-list" class="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+            <div class="text-center text-slate-500 text-sm py-12">
+              <i data-lucide="book" class="w-10 h-10 mx-auto mb-3 opacity-30"></i>
+              <p>Chưa có truyện nào<br><span class="text-xs">Dán nội dung và bấm "Lưu & Phân Đoạn"</span></p>
+            </div>
           </div>
         </div>
       </div>
@@ -502,8 +582,9 @@
           <!-- Hashtags & Max Videos -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="space-y-1.5">
-              <label for="input-hashtags" class="text-xs font-semibold text-slate-300">Hashtags Cào Trend</label>
-              <input type="text" id="input-hashtags" placeholder="coding,programming,aitools" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 transition">
+              <label for="input-hashtags" class="text-xs font-semibold text-slate-300">Hashtags Video Nền (cào TikTok)</label>
+              <input type="text" id="input-hashtags" placeholder="satisfying,building,craft,lego" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 transition">
+              <p class="text-[11px] text-slate-500">Video nền cho Truyện Audio khi đọc truyện</p>
             </div>
 
             <div class="space-y-1.5">
@@ -515,8 +596,8 @@
           <!-- Min Views & Voice -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div class="space-y-1.5">
-              <label for="input-min-views" class="text-xs font-semibold text-slate-300">Min View Lọc Video</label>
-              <input type="number" id="input-min-views" value="50000" step="10000" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 transition">
+              <label for="input-min-views" class="text-xs font-semibold text-slate-300">Min View Lọc Video Nền</label>
+              <input type="number" id="input-min-views" value="10000" step="5000" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 transition">
             </div>
 
             <div class="space-y-1.5">
