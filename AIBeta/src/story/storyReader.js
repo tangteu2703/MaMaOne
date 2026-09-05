@@ -67,7 +67,6 @@ function saveStoryToFile(storyContent, storyTitle = 'my_story') {
   return filePath;
 }
 
-
 /**
  * Lấy trạng thái các tập đã render của một truyện
  */
@@ -95,10 +94,17 @@ function saveEpisodesProgress(storyTitle, progressData) {
  * Phân đoạn câu chuyện thành các Episode tự nhiên
  * Ưu tiên tách theo đoạn văn → ngắt theo câu nếu đoạn quá dài
  * @param {string} storyContent - Nội dung toàn bộ truyện
- * @param {number} wordsPerEpisode - Số từ mỗi tập (mặc định 200 từ ≈ 75s)
+ * @param {number} wordsPerEpisode - Số từ mỗi tập (0 = không chia)
  * @returns {Array<{index, title, content, wordCount}>} Danh sách tập
  */
 function splitStoryIntoEpisodes(storyContent, wordsPerEpisode = null) {
+  // wordsPerEpisode = 0 → không chia tập, trả về 1 tập duy nhất
+  if (wordsPerEpisode === 0 || wordsPerEpisode === '0') {
+    const ep = buildEpisode(1, storyContent.replace(/\r\n/g, '\n').trim());
+    logger.info(MODULE, `Không chia tập — 1 tập duy nhất (${ep.wordCount} từ)`);
+    return [ep];
+  }
+
   const targetWords = wordsPerEpisode || config.story.wordsPerEpisode;
   const maxWords = Math.round(targetWords * 1.3); // 30% buffer
 
@@ -124,7 +130,6 @@ function splitStoryIntoEpisodes(storyContent, wordsPerEpisode = null) {
       for (const sentence of sentences) {
         const sentenceWords = sentence.trim().split(/\s+/).length;
         if (currentWordCount + sentenceWords > maxWords && currentWordCount >= Math.round(targetWords * 0.7)) {
-          // Flush episode hiện tại
           episodes.push(buildEpisode(episodes.length + 1, currentChunk.join('\n\n')));
           currentChunk = [];
           currentWordCount = 0;
@@ -213,7 +218,6 @@ Hãy tạo metadata cuốn hút cho video TikTok Truyện Audio này. Trả về
     }
   }
 
-
   return getDefaultEpisodeMetadata(storyTitle, episode);
 }
 
@@ -264,7 +268,6 @@ function loadAndSplitStory(storyFilePath = null, wordsPerEpisode = null) {
     totalWords,
   };
 }
-
 
 module.exports = {
   readStoryFromFile,

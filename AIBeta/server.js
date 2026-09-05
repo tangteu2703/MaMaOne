@@ -412,6 +412,436 @@ app.get('/api/pipeline-files', (req, res) => {
   }
 });
 
+// ==========================================
+// STUDIO APIs — Stories, Audio, Video
+// ==========================================
+
+const { splitStoryIntoEpisodes, generateEpisodeMetadata } = require('./src/story/storyReader');
+const { generateVoice } = require('./src/tts/voiceGenerator');
+
+// Đường dẫn thư mục studio
+const STORIES_DIR  = path.join(__dirname, 'workspace', 'stories');
+const AUDIO_DIR    = path.join(__dirname, 'workspace', 'audio');
+const VIDEO_BG_DIR = path.join(__dirname, 'workspace', 'downloads');
+const MUSIC_DIR    = path.join(__dirname, 'workspace', 'music');
+const OUTPUT_DIR   = path.join(__dirname, 'workspace', 'output');
+
+// Đảm bảo thư mục tồn tại
+[STORIES_DIR, AUDIO_DIR, VIDEO_BG_DIR, MUSIC_DIR, OUTPUT_DIR].forEach(d => {
+  if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+});
+
+// Serve thư mục audio
+app.use('/audio', express.static(AUDIO_DIR));
+app.use('/music', express.static(MUSIC_DIR));
+
+// Helper: đọc danh sách truyện từ stories dir
+function listAllStories() {
+  if (!fs.existsSync(STORIES_DIR)) return [];
+  const jsonFiles = fs.readdirSync(STORIES_DIR).filter(f => f.endsWith('.json') && !f.includes('_progress'));
+  return jsonFiles.map(jf => {
+    try {
+      const meta = JSON.parse(fs.readFileSync(path.join(STORIES_DIR, jf), 'utf8'));
+      const txtFile = path.join(STORIES_DIR, jf.replace('.json', '.txt'));
+      const content = fs.existsSync(txtFile) ? fs.readFileSync(txtFile, 'utf8') : '';
+      const wordCount = content.split(/\s+/).filter(Boolean).length;
+      const id = jf.replace('.json', '');
+      const progressFile = path.join(STORIES_DIR, `${id}_progress.json`);
+      const progress = fs.existsSync(progressFile) ? JSON.parse(fs.readFileSync(progressFile, 'utf8')) : null;
+      return {
+        id,
+        title: meta.originalTitle || meta.title || id,
+        wordCount,
+        charCount: content.length,
+        createdAt: meta.createdAt || null,
+        episodesRendered: progress ? Object.keys(progress).length : 0,
+      };
+    } catch { return null; }
+  }).filter(Boolean);
+}
+
+// GET /api/stories — Danh sách tất cả truyện
+app.get('/api/stories', (req, res) => {
+  try {
+    res.json({ success: true, stories: listAllStories() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/stories/:id — Chi tiết một truyện + phân tập
+app.get('/api/stories/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const wordsPerEp = parseInt(req.query.wordsPerEpisode) ?? 0;
+    const txtFile = path.join(STORIES_DIR, `${id}.txt`);
+    const metaFile = path.join(STORIES_DIR, `${id}.json`);
+    if (!fs.existsSync(txtFile)) return res.status(404).json({ success: false, error: 'Không tìm thấy truyện' });
+    const content = fs.readFileSync(txtFile, 'utf8');
+    const meta = fs.existsSync(metaFile) ? JSON.parse(fs.readFileSync(metaFile, 'utf8')) : {};
+    const episodes = splitStoryIntoEpisodes(content, wordsPerEp);
+    res.json({
+      success: true,
+      id,
+      title: meta.originalTitle || meta.title || id,
+      content,
+      wordCount: content.split(/\s+/).filter(Boolean).length,
+      episodes: episodes.map(ep => ({
+        index: ep.index,
+        title: ep.title,
+        content: ep.content,
+        wordCount: ep.wordCount,
+        estimatedDurationSeconds: ep.estimatedDurationSeconds,
+        preview: ep.content.substring(0, 150) + '...',
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+
+// POST /api/stories — Tạo truyện mới
+app.post('/api/stories', (req, res) => {
+  try {
+    const { title, content, genre, description, wordsPerEpisode } = req.body;
+    if (!content || content.trim().length < 50) {
+      return res.status(400).json({ success: false, error: 'Nội dung truyện quá ngắn!' });
+    }
+    const { saveStoryToFile } = require('./src/story/storyReader');
+    const safeId = (title || 'story').replace(/[^\w\s-]/g, '').replace(/\s+/g, '_').substring(0, 50) || `story_${Date.now()}`;
+    const savedPath = saveStoryToFile(content, title || 'Truyện Mới');
+    // Lưu thêm meta genre, description
+    const metaFile = savedPath.replace('.txt', '.json');
+    const existingMeta = fs.existsSync(metaFile) ? JSON.parse(fs.readFileSync(metaFile, 'utf8')) : {};
+    fs.writeFileSync(metaFile, JSON.stringify({
+      ...existingMeta,
+      genre: genre || '',
+      description: description || '',
+      createdAt: new Date().toISOString(),
+    }, null, 2));
+    const wpe = parseInt(wordsPerEpisode) || 0;
+    const episodes = splitStoryIntoEpisodes(content, wpe);
+    const wordCount = content.split(/\s+/).filter(Boolean).length;
+    logger.success('Studio', `Truyện mới: "${title}" (${wordCount} từ, ${episodes.length} tập)`);
+    res.json({ success: true, id: safeId, title, wordCount, episodeCount: episodes.length, message: `Đã lưu truyện "${title}" (${episodes.length} tập)` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/stories/:id
+app.delete('/api/stories/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const txtFile = path.join(STORIES_DIR, `${id}.txt`);
+    const metaFile = path.join(STORIES_DIR, `${id}.json`);
+    const progressFile = path.join(STORIES_DIR, `${id}_progress.json`);
+    [txtFile, metaFile, progressFile].forEach(f => { try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {} });
+    res.json({ success: true, message: 'Đã xóa truyện' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Trạng thái render audio đang chạy
+const audioRenderJobs = {};
+
+// POST /api/render-audio — Render audio một hoặc nhiều tập
+app.post('/api/render-audio', async (req, res) => {
+  try {
+    const { storyId, episodes, voiceName, rate, pitch, volume, wordsPerEpisode } = req.body;
+    const txtFile = path.join(STORIES_DIR, `${storyId}.txt`);
+    if (!fs.existsSync(txtFile)) return res.status(404).json({ success: false, error: 'Không tìm thấy truyện' });
+    const content = fs.readFileSync(txtFile, 'utf8');
+    const metaFile = path.join(STORIES_DIR, `${storyId}.json`);
+    const meta = fs.existsSync(metaFile) ? JSON.parse(fs.readFileSync(metaFile, 'utf8')) : {};
+    const storyTitle = meta.originalTitle || meta.title || storyId;
+    // Chia tập từ file .txt gốc theo wordsPerEpisode
+    // KHÔNG dùng SRT vì SRT lưu từng câu subtitle nhỏ (5-10 từ), không phải nội dung đầy đủ của tập
+    const allEpisodes = splitStoryIntoEpisodes(content, parseInt(wordsPerEpisode) || 0);
+    const episodesToRender = episodes && episodes.length > 0
+      ? allEpisodes.filter(ep => episodes.includes(ep.index))
+      : allEpisodes;
+
+    // Cập nhật voice config nếu có
+    if (voiceName) process.env.VOICE_NAME = voiceName;
+
+    const jobId = `${storyId}_${Date.now()}`;
+    audioRenderJobs[jobId] = { status: 'running', total: episodesToRender.length, done: 0, results: [] };
+
+    res.json({ success: true, jobId, total: episodesToRender.length, message: `Bắt đầu render ${episodesToRender.length} tập audio...` });
+
+    // Render async
+    (async () => {
+      for (const ep of episodesToRender) {
+        const safeTitle = storyTitle.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_').substring(0, 30);
+        const audioFileName = `${safeTitle}_Tap${ep.index}.mp3`;
+        const audioPath = path.join(AUDIO_DIR, audioFileName);
+        try {
+          logger.info('Studio', `Render audio: ${audioFileName} (${ep.wordCount} từ)...`);
+          // Ghi script ra file tạm
+          const tempId = `studio_${storyId}_ep${ep.index}`;
+
+          // Override VOICE_NAME via env
+          if (voiceName) process.env.VOICE_NAME = voiceName;
+
+          // Tính rate string đúng định dạng edge-tts: UI gửi số % tăng thêm (ví dụ 33 = +33% ≈ 1.6x)
+          const rateStr = (rate !== undefined && rate !== null && rate !== 0)
+            ? (rate > 0 ? `+${rate}%` : `${rate}%`)
+            : '+0%';
+          logger.info('Studio', `Rate: ${rateStr} (raw: ${rate})`);
+          await generateVoice(tempId, ep.content, rateStr);
+
+          // Copy từ audio cache sang thư mục audio studio
+          const tempAudioPath = path.join(__dirname, 'workspace', 'audio', `${tempId}.mp3`);
+          if (fs.existsSync(tempAudioPath) && tempAudioPath !== audioPath) {
+            fs.copyFileSync(tempAudioPath, audioPath);
+          }
+
+          const fileSize = fs.existsSync(audioPath) ? fs.statSync(audioPath).size : 0;
+          // Ước tính duration thực tế từ kích thước file MP3 (bitrate 128kbps = 16KB/s)
+          const realDurationSeconds = fileSize > 1000 ? Math.round(fileSize / (128 * 128)) : ep.estimatedDurationSeconds;
+          const result = {
+            episodeIndex: ep.index,
+            episodeTitle: ep.title,
+            filename: audioFileName,
+            url: `/audio/${audioFileName}`,
+            wordCount: ep.wordCount,
+            estimatedDuration: ep.estimatedDurationSeconds,
+            durationSeconds: realDurationSeconds,
+            fileSizeKB: Math.round(fileSize / 1024),
+            status: fileSize > 1000 ? 'done' : 'error',
+          };
+          audioRenderJobs[jobId].results.push(result);
+          audioRenderJobs[jobId].done++;
+          broadcast('audio_render_progress', { jobId, ...result, done: audioRenderJobs[jobId].done, total: audioRenderJobs[jobId].total });
+          logger.success('Studio', `✅ Audio: ${audioFileName} (${Math.round(fileSize/1024)} KB)`);
+        } catch (err) {
+          logger.error('Studio', `Lỗi render audio tập ${ep.index}: ${err.message}`);
+          audioRenderJobs[jobId].results.push({ episodeIndex: ep.index, status: 'error', error: err.message });
+          audioRenderJobs[jobId].done++;
+          broadcast('audio_render_progress', { jobId, episodeIndex: ep.index, status: 'error', done: audioRenderJobs[jobId].done, total: audioRenderJobs[jobId].total });
+        }
+      }
+      audioRenderJobs[jobId].status = 'done';
+      broadcast('audio_render_complete', { jobId, results: audioRenderJobs[jobId].results });
+
+      logger.success('Studio', `✅ Hoàn thành render ${episodesToRender.length} tập audio!`);
+    })();
+
+  } catch (err) {
+    logger.error('Studio', `Lỗi render audio: ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/render-audio/status/:jobId
+app.get('/api/render-audio/status/:jobId', (req, res) => {
+  const job = audioRenderJobs[req.params.jobId];
+  if (!job) return res.status(404).json({ success: false, error: 'Job không tồn tại' });
+  res.json({ success: true, ...job });
+});
+
+// GET /api/audio-files — Danh sách file audio đã render
+app.get('/api/audio-files', (req, res) => {
+  try {
+    if (!fs.existsSync(AUDIO_DIR)) return res.json({ success: true, files: [] });
+    const files = fs.readdirSync(AUDIO_DIR)
+      .filter(f => f.endsWith('.mp3') && !f.startsWith('studio_'))
+      .map(f => {
+        const stat = fs.statSync(path.join(AUDIO_DIR, f));
+        return {
+          filename: f,
+          url: `/audio/${f}`,
+          fileSizeKB: Math.round(stat.size / 1024),
+          createdAt: stat.ctime.toISOString(),
+        };
+      })
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    res.json({ success: true, files });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/audio-files/all — Xóa toàn bộ file audio
+app.delete('/api/audio-files/all', (req, res) => {
+  try {
+    if (!fs.existsSync(AUDIO_DIR)) return res.json({ success: true, deleted: 0 });
+    const files = fs.readdirSync(AUDIO_DIR).filter(f => f.endsWith('.mp3') && !f.startsWith('studio_'));
+    files.forEach(f => fs.unlinkSync(path.join(AUDIO_DIR, f)));
+    res.json({ success: true, deleted: files.length });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /api/audio-files/:filename — Xóa một file audio
+app.delete('/api/audio-files/:filename', (req, res) => {
+  try {
+    const filename = path.basename(req.params.filename); // tránh path traversal
+    const filepath = path.join(AUDIO_DIR, filename);
+    if (!fs.existsSync(filepath)) return res.status(404).json({ success: false, error: 'File không tồn tại' });
+    fs.unlinkSync(filepath);
+    res.json({ success: true, deleted: filename });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/video-bg-files — Danh sách video nền + nhạc nền
+app.get('/api/video-bg-files', (req, res) => {
+  try {
+    const videoBgs = fs.existsSync(VIDEO_BG_DIR)
+      ? fs.readdirSync(VIDEO_BG_DIR)
+          .filter(f => /\.(mp4|mov|avi|mkv)$/i.test(f))
+          .map(f => {
+            const stat = fs.statSync(path.join(VIDEO_BG_DIR, f));
+            return { filename: f, url: `/downloads/${f}`, sizeMB: (stat.size / 1024 / 1024).toFixed(1) };
+          })
+      : [];
+    const musicFiles = fs.existsSync(MUSIC_DIR)
+      ? fs.readdirSync(MUSIC_DIR)
+          .filter(f => /\.(mp3|wav|ogg|m4a)$/i.test(f))
+          .map(f => {
+            const stat = fs.statSync(path.join(MUSIC_DIR, f));
+            return { filename: f, url: `/music/${f}`, sizeMB: (stat.size / 1024 / 1024).toFixed(1) };
+          })
+      : [];
+    res.json({ success: true, videos: videoBgs, music: musicFiles });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Render video jobs
+const videoRenderJobs = {};
+
+// POST /api/render-video — Ghép video từ audio + video nền + nhạc nền
+app.post('/api/render-video', async (req, res) => {
+  try {
+    const { mappings, musicVolume, outputFormat } = req.body;
+    // mappings = [{ audioFile, videoBgFile, musicFile, outputName }]
+    if (!mappings || !Array.isArray(mappings) || mappings.length === 0) {
+      return res.status(400).json({ success: false, error: 'Thiếu thông tin ghép video' });
+    }
+    const jobId = `video_${Date.now()}`;
+    videoRenderJobs[jobId] = { status: 'running', total: mappings.length, done: 0, results: [] };
+    res.json({ success: true, jobId, total: mappings.length, message: `Bắt đầu ghép ${mappings.length} video...` });
+
+    // Ghép async
+    (async () => {
+      const { exec: execCmd } = require('child_process');
+      const util = require('util');
+      const execAsync = util.promisify(execCmd);
+
+      for (const mapping of mappings) {
+        const { audioFile, videoBgFile, musicFile, outputName } = mapping;
+        const audioPath = path.join(AUDIO_DIR, audioFile);
+        const videoBgPath = path.join(VIDEO_BG_DIR, videoBgFile);
+        const musicPath = musicFile ? path.join(MUSIC_DIR, musicFile) : null;
+        const outName = outputName || `output_${Date.now()}.mp4`;
+        const outputPath = path.join(OUTPUT_DIR, outName);
+        const volMusic = parseFloat(musicVolume) || 0.3;
+
+        try {
+          if (!fs.existsSync(audioPath)) throw new Error(`Audio không tồn tại: ${audioFile}`);
+          if (!fs.existsSync(videoBgPath)) throw new Error(`Video nền không tồn tại: ${videoBgFile}`);
+
+          let ffmpegCmd;
+          if (musicPath && fs.existsSync(musicPath)) {
+            // Ghép: video nền + audio truyện + nhạc nền (mix)
+            ffmpegCmd = `ffmpeg -y -stream_loop -1 -i "${videoBgPath}" -i "${audioPath}" -stream_loop -1 -i "${musicPath}" ` +
+              `-filter_complex "[1:a]volume=1.0[voice];[2:a]volume=${volMusic}[music];[voice][music]amix=inputs=2:duration=first[aout]" ` +
+              `-map 0:v -map "[aout]" -shortest -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k "${outputPath}"`;
+          } else {
+            // Ghép: video nền + audio truyện (không nhạc nền)
+            ffmpegCmd = `ffmpeg -y -stream_loop -1 -i "${videoBgPath}" -i "${audioPath}" ` +
+              `-map 0:v -map 1:a -shortest -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 192k "${outputPath}"`;
+          }
+
+          logger.info('Studio', `FFmpeg ghép video: ${outName}...`);
+          await execAsync(ffmpegCmd, { timeout: 300000 });
+
+          const fileSize = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : 0;
+          const result = {
+            outputName: outName,
+            url: `/output/${outName}`,
+            fileSizeMB: (fileSize / 1024 / 1024).toFixed(2),
+            status: fileSize > 10000 ? 'done' : 'error',
+            audioFile,
+            videoBgFile,
+          };
+          videoRenderJobs[jobId].results.push(result);
+          videoRenderJobs[jobId].done++;
+          broadcast('video_render_progress', { jobId, ...result, done: videoRenderJobs[jobId].done, total: videoRenderJobs[jobId].total });
+          logger.success('Studio', `✅ Video ghép xong: ${outName} (${result.fileSizeMB} MB)`);
+        } catch (err) {
+          logger.error('Studio', `Lỗi ghép video ${outName}: ${err.message}`);
+          videoRenderJobs[jobId].results.push({ outputName: outName, status: 'error', error: err.message });
+          videoRenderJobs[jobId].done++;
+          broadcast('video_render_progress', { jobId, outputName: outName, status: 'error', done: videoRenderJobs[jobId].done, total: videoRenderJobs[jobId].total });
+        }
+      }
+      videoRenderJobs[jobId].status = 'done';
+      broadcast('video_render_complete', { jobId, results: videoRenderJobs[jobId].results });
+      logger.success('Studio', `✅ Hoàn thành ghép ${mappings.length} video!`);
+    })();
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/output-videos — Danh sách video output hoàn chỉnh
+app.get('/api/output-videos', (req, res) => {
+  try {
+    if (!fs.existsSync(OUTPUT_DIR)) return res.json({ success: true, files: [] });
+    const files = fs.readdirSync(OUTPUT_DIR)
+      .filter(f => /\.(mp4|mov)$/i.test(f))
+      .map(f => {
+        const stat = fs.statSync(path.join(OUTPUT_DIR, f));
+        return {
+          filename: f,
+          url: `/output/${f}`,
+          fileSizeMB: (stat.size / 1024 / 1024).toFixed(2),
+          createdAt: stat.ctime.toISOString(),
+        };
+      })
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    res.json({ success: true, files });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Upload video nền
+app.post('/api/upload-video-bg', express.raw({ type: ['video/*'], limit: '500mb' }), (req, res) => {
+  try {
+    const filename = req.headers['x-filename'] || `video_${Date.now()}.mp4`;
+    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const destPath = path.join(VIDEO_BG_DIR, safeFilename);
+    fs.writeFileSync(destPath, req.body);
+    res.json({ success: true, filename: safeFilename, url: `/downloads/${safeFilename}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Upload nhạc nền
+app.post('/api/upload-music', express.raw({ type: ['audio/*'], limit: '100mb' }), (req, res) => {
+  try {
+    const filename = req.headers['x-filename'] || `music_${Date.now()}.mp3`;
+    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const destPath = path.join(MUSIC_DIR, safeFilename);
+    fs.writeFileSync(destPath, req.body);
+    res.json({ success: true, filename: safeFilename, url: `/music/${safeFilename}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Start Server
 server.listen(PORT, () => {
   console.log('\n' + '═'.repeat(60));

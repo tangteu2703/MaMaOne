@@ -8,7 +8,7 @@ const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const config = require('../../config/config');
 const logger = require('../logger');
 
@@ -21,57 +21,54 @@ const httpsAgent = new https.Agent({ rejectUnauthorized: false });
  * @param {string} script - Kịch bản tiếng Việt cần đọc
  * @returns {Promise<string>} Đường dẫn file audio .mp3
  */
-async function generateVoice(videoId, script) {
+async function generateVoice(videoId, script, rateStr) {
   const outputPath = path.join(config.paths.audio, `${videoId}.mp3`);
+  const rate = rateStr || '+0%';
+  const voiceName = process.env.VOICE_NAME || config.pipeline.voiceName || 'vi-VN-HoaiMyNeural';
+  const isDefaultVoice = voiceName === 'vi-VN-HoaiMyNeural';
+  const isCustomRate  = rate !== '+0%' && rate !== '0%';
 
-  // Nếu đã tạo và file hợp lệ (>5KB) thì dùng luôn
+  // Xóa cache cũ nếu có rate hoặc voice mới
   if (fs.existsSync(outputPath)) {
-    const size = fs.statSync(outputPath).size;
-    if (size > 5 * 1024) {
-      const sizeKB = (size / 1024).toFixed(1);
-      logger.info(MODULE, `Audio ${videoId}.mp3 đã có sẵn (${sizeKB} KB), dùng luôn`);
-      return outputPath;
-    } else {
-      fs.unlinkSync(outputPath);
-    }
+    fs.unlinkSync(outputPath);
+    logger.info(MODULE, `Xóa cache cũ để render lại`);
   }
 
-  logger.info(MODULE, `Đang tạo giọng đọc AI Tiếng Việt cho video: ${videoId}`);
+  logger.info(MODULE, `Render: ${videoId} | voice=${voiceName} | rate=${rate}`);
 
-  // -------------------------------------------------------------
-  // PHƯƠNG ÁN 1: google-tts-api (Cực nhanh, giọng đọc Tiếng Việt chuẩn, 100% tiếng THẬT)
-  // -------------------------------------------------------------
+  // Edge-TTS: luôn ưu tiên khi có voice tùy chỉnh hoặc rate khác 0
+  // (Google TTS không hỗ trợ voice chọn + rate)
+  if (isCustomRate || !isDefaultVoice) {
+    logger.info(MODULE, `Đang dùng Edge-TTS (voice=${voiceName}, rate=${rate})...`);
+    const result = await tryEdgeTTS(script, outputPath, rate, voiceName);
+    if (result && fs.existsSync(result) && fs.statSync(result).size > 5000) {
+      const sizeKB = (fs.statSync(result).size / 1024).toFixed(1);
+      logger.success(MODULE, `✅ Edge-TTS OK: ${videoId}.mp3 (${sizeKB} KB)`);
+      return result;
+    }
+    logger.warn(MODULE, `Edge-TTS thất bại — fallback Google TTS (sẽ mất voice/rate)`);
+  }
+
+  // Google TTS: chỉ dùng khi không cần voice/rate đặc biệt (nhanh, online)
   try {
-    logger.info(MODULE, 'Phương án 1: Tạo giọng đọc qua Google TTS API...');
+    logger.info(MODULE, 'Google TTS API...');
     const audioPath = await generateGoogleTTS(script, outputPath);
     if (audioPath && fs.existsSync(audioPath) && fs.statSync(audioPath).size > 5000) {
-      const sizeKB = (fs.statSync(audioPath).size / 1024).toFixed(1);
-      logger.success(MODULE, `✅ Google TTS tạo giọng đọc thành công: ${videoId}.mp3 (${sizeKB} KB)`);
+      logger.success(MODULE, `✅ Google TTS OK: ${videoId}.mp3`);
       return audioPath;
     }
   } catch (err1) {
-    logger.warn(MODULE, `Phương án 1 (Google TTS) thất bại: ${err1.message}`);
+    logger.warn(MODULE, `Google TTS thất bại: ${err1.message}`);
   }
 
-  // Phương án 2: Edge-TTS Python CLI
-  try {
-    logger.info(MODULE, 'Phương án 2: Thử tạo giọng đọc qua Edge-TTS...');
-    const result2 = await tryEdgeTTS(script, outputPath);
-    if (result2 && fs.existsSync(result2) && fs.statSync(result2).size > 5000) {
-      return result2;
-    }
-  } catch (err2) {
-    logger.warn(MODULE, `Phương án 2 (Edge-TTS) thất bại: ${err2.message}`);
-  }
-
-  // Phương án 3: Google Translate TTS Fallback qua Node.js (Bỏ qua SSL cert)
-  logger.info(MODULE, 'Phương án 3: Thử fallback sang Google TTS Node.js direct...');
+  // Fallback: Google Translate TTS trực tiếp
+  logger.info(MODULE, 'Fallback: Google Translate TTS direct...');
   const result3 = await tryGoogleTTS(videoId, script, outputPath);
   if (result3 && fs.existsSync(result3) && fs.statSync(result3).size > 1000) {
     return result3;
   }
 
-  throw new Error(`Không thể tạo giọng đọc AI Tiếng Việt cho video ${videoId}.`);
+  throw new Error(`Không thể tạo giọng đọc cho ${videoId}.`);
 }
 
 /**
@@ -94,7 +91,10 @@ async function tryGoogleTTS(videoId, script, outputPath) {
       if (current.trim()) chunks.push(current.trim());
       if (chunks.length === 0) chunks.push(script.substring(0, 180));
 
+      // Đảm bảo thư mục tồn tại trước khi ghi
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
       const file = fs.createWriteStream(outputPath);
+      file.on('error', (e) => { logger.warn(MODULE, `WriteStream lỗi: ${e.message}`); resolve(null); });
       let chunkIndex = 0;
 
       function downloadNextChunk() {
@@ -170,6 +170,7 @@ async function generateGoogleTTS(text, outputPath) {
   }
 
   const combinedBuffer = Buffer.concat(audioBuffers);
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, combinedBuffer);
   return outputPath;
 }
@@ -177,24 +178,31 @@ async function generateGoogleTTS(text, outputPath) {
 /**
  * Fallback Edge-TTS
  */
-function tryEdgeTTS(script, outputPath) {
+function tryEdgeTTS(script, outputPath, rateStr, voiceName) {
   return new Promise((resolve) => {
     const tempTxt = outputPath.replace('.mp3', '_script.txt');
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(tempTxt, script, 'utf8');
 
-    const cmd = [
-      `"${config.paths.edgeTts}"`,
-      '--voice', config.pipeline.voiceName || 'vi-VN-HoaiMyNeural',
-      '--file', `"${tempTxt}"`,
-      '--write-media', `"${outputPath}"`,
-      '--rate', '+10%',
-    ].join(' ');
+    const rate  = rateStr   || '+0%';
+    const voice = voiceName || process.env.VOICE_NAME || config.pipeline.voiceName || 'vi-VN-HoaiMyNeural';
+    const edgeTtsPath = config.paths.edgeTts;
 
-    exec(cmd, { timeout: 45000 }, (error) => {
+    // Dùng execFile thay exec để tránh shell parse ký tự đặc biệt (+, %)
+    const args = [
+      '--voice', voice,
+      '--file', tempTxt,
+      '--write-media', outputPath,
+      '--rate', rate,
+    ];
+
+    logger.info(MODULE, `Edge-TTS: voice=${voice} rate=${rate}`);
+    execFile(edgeTtsPath, args, { timeout: 120000 }, (error) => {
       try { fs.unlinkSync(tempTxt); } catch {}
       if (!error && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 5000) {
         resolve(outputPath);
       } else {
+        if (error) logger.warn(MODULE, `Edge-TTS error: ${error.message.split('\n')[0]}`);
         resolve(null);
       }
     });

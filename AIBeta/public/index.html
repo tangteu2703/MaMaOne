@@ -1,628 +1,821 @@
 <!DOCTYPE html>
-<html lang="vi" class="dark">
+<html lang="vi" data-bs-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TikTok Auto AIBeta — Control Center</title>
+  <title>AIBeta Studio — Sản xuất Audio &amp; Video</title>
+  <meta name="description" content="Studio sản xuất audio truyện AI và render video tự động">
 
-  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Plus Jakarta Sans', 'sans-serif'],
-            mono: ['JetBrains Mono', 'monospace'],
-          },
-          colors: {
-            brand: {
-              50: '#eef2ff',
-              100: '#e0e7ff',
-              500: '#6366f1',
-              600: '#4f46e5',
-              700: '#4338ca',
-            },
-            dark: {
-              bg: '#090d16',
-              card: '#111827',
-              border: '#1f2937',
-            }
-          }
-        }
-      }
-    }
-  </script>
-
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-
-  <!-- ApexCharts CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-
-  <!-- SweetAlert2 CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-  <!-- Animate.css CDN -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+  <!-- Bootstrap 5.3 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- SortableJS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
 
   <style>
-    /* Custom Scrollbar for Log Terminal */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #0b0f19; }
-    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+    :root {
+      --bs-body-bg: #080c14;
+      --bs-body-color: #e2e8f0;
+      --bs-border-color: rgba(255,255,255,0.08);
+      --bs-secondary-bg: #0d1220;
+    }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #080c14; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
 
-    .glass-card {
-      background: rgba(17, 24, 39, 0.75);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+    /* Background orbs */
+    .bg-orb { position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0; }
+    .bg-orb-1 { width: 500px; height: 500px; background: radial-gradient(circle, rgba(99,102,241,.08), transparent 70%); top: -100px; left: -100px; }
+    .bg-orb-2 { width: 400px; height: 400px; background: radial-gradient(circle, rgba(6,182,212,.07), transparent 70%); bottom: 0; right: -80px; }
+
+    #studio-header { background: rgba(8,12,20,.95); backdrop-filter: blur(20px); border-bottom: 1px solid var(--bs-border-color); z-index: 1030; }
+    .studio-main { height: calc(100vh - 58px); overflow: hidden; position: relative; z-index: 1; }
+
+    /* Tabs */
+    #tab-stories, #tab-audio, #tab-video { display: none; height: 100%; }
+    #tab-stories.active-tab { display: flex; flex-direction: row; }
+    #tab-audio.active-tab  { display: flex; flex-direction: row; }
+    #tab-video.active-tab  { display: flex; flex-direction: column; overflow-y: auto; }
+
+    /* Sidebar */
+    .sidebar-panel { width: 300px; min-width: 300px; border-right: 1px solid var(--bs-border-color); background: #0d1220; display: flex; flex-direction: column; overflow: hidden; }
+    .sidebar-body { flex: 1; overflow-y: auto; }
+    .main-panel { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+    /* Nav tabs override */
+    .nav-tabs { border: none; }
+    .nav-tabs .nav-link { color: #64748b; border: 1px solid transparent !important; font-size: .8rem; font-weight: 600; border-radius: 8px !important; }
+    .nav-tabs .nav-link.active { color: #a5b4fc; background: rgba(99,102,241,.12) !important; border-color: rgba(99,102,241,.3) !important; }
+    .nav-tabs .nav-link:hover:not(.active) { color: #e2e8f0; background: rgba(255,255,255,.05); }
+
+    /* Form controls */
+    .form-control, .form-select {
+      background-color: #0f1828 !important;
+      background: #0f1828 !important;
+      border-color: rgba(99,102,241,.35) !important;
+      color: #e2e8f0 !important;
+      font-size: .85rem;
     }
-    .glass-card:hover {
-      border-color: rgba(99, 102, 241, 0.25);
+    .form-control:focus, .form-select:focus {
+      background-color: #162040 !important;
+      background: #162040 !important;
+      border-color: rgba(99,102,241,.7) !important;
+      color: #f0f4ff !important;
+      box-shadow: 0 0 0 2px rgba(99,102,241,.18) !important;
     }
-    
-    .glow-purple {
-      box-shadow: 0 0 25px -5px rgba(99, 102, 241, 0.4);
+    .form-control::placeholder { color: #3d5070; }
+    select.form-select {
+      background-color: #0f1828 !important;
+      background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23818cf8' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e") !important;
+      background-repeat: no-repeat !important;
+      background-position: right 0.75rem center !important;
+      background-size: 16px 12px !important;
+      color: #e2e8f0 !important;
+      border-color: rgba(99,102,241,.4) !important;
+      padding-right: 2.25rem;
     }
-    .glow-cyan {
-      box-shadow: 0 0 25px -5px rgba(6, 182, 212, 0.4);
+    select.form-select option {
+      background-color: #111827;
+      color: #e2e8f0;
+      padding: 6px 10px;
     }
-    
-    @keyframes pulse-ring {
-      0% { transform: scale(0.95); opacity: 0.8; }
-      50% { transform: scale(1.15); opacity: 1; }
-      100% { transform: scale(0.95); opacity: 0.8; }
+    textarea.story-textarea { min-height: 280px; font-family: 'JetBrains Mono', monospace; font-size: .78rem; line-height: 1.6; }
+
+    /* Custom buttons */
+    .btn-accent { background: linear-gradient(135deg,#6366f1,#4f46e5); border: none; color: #fff; font-weight: 600; }
+    .btn-accent:hover { opacity: .9; color: #fff; transform: translateY(-1px); box-shadow: 0 0 20px rgba(99,102,241,.35); }
+    .btn-amber { background: linear-gradient(135deg,#f59e0b,#d97706); border: none; color: #fff; font-weight: 700; }
+    .btn-amber:hover { opacity: .9; color: #fff; }
+    .btn-purple { background: linear-gradient(135deg,#7c3aed,#6d28d9); border: none; color: #fff; font-weight: 700; }
+    .btn-purple:hover:not(:disabled) { opacity: .9; color: #fff; }
+    .btn-purple:disabled { opacity: .4; }
+
+    /* Story card */
+    .story-card {
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--bs-border-color);
+      transition: all .2s;
+      cursor: pointer;
+      border-radius: 8px;
+      padding: 8px 10px 6px;
+      margin: 0 2px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
     }
-    .pulse-dot {
-      animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    .story-card:hover { border-color: rgba(99,102,241,.4); background: rgba(99,102,241,.06); }
+    .story-card.selected { border-color: rgba(99,102,241,.5); background: rgba(99,102,241,.1); }
+    .story-card-title {
+      font-size: .82rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
+    .story-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: .68rem;
+      color: #64748b;
+      margin-top: 1px;
+    }
+    .story-card-badge {
+      background: rgba(245,158,11,.15);
+      color: #f59e0b;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: .65rem;
+      font-weight: 600;
+    }
+    .story-card-actions {
+      display: flex;
+      gap: 4px;
+      margin-top: 6px;
+      opacity: 0;
+      transition: opacity .15s;
+    }
+    .story-card:hover .story-card-actions { opacity: 1; }
+    .btn-story-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.06);
+      color: #94a3b8;
+      font-size: .68rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+      font-family: inherit;
+    }
+    .btn-story-action:hover { background: rgba(99,102,241,.2); border-color: rgba(99,102,241,.4); color: #a5b4fc; }
+    .btn-story-action.danger:hover { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.4); color: #f87171; }
+
+    /* Audio story selector */
+    .audio-story-item {
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--bs-border-color);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all .2s;
+      padding: 8px 10px;
+    }
+    .audio-story-item:hover { border-color: rgba(245,158,11,.4); }
+    .audio-story-item.selected { border-color: rgba(245,158,11,.5); background: rgba(245,158,11,.07); }
+    .audio-story-item-title { font-size: .8rem; font-weight: 600; color: #e2e8f0; line-height: 1.3; }
+    .audio-story-item-meta { font-size: .68rem; color: #64748b; margin-top: 2px; }
+
+    /* Episode preview */
+    .ep-preview-item { background: rgba(255,255,255,.02); border: 1px solid var(--bs-border-color); border-radius: 6px; font-size: .78rem; }
+    .ep-num { color: #818cf8; font-weight: 700; }
+    .ep-dur { color: #67e8f9; font-family: 'JetBrains Mono', monospace; }
+
+    /* Episode checklist */
+    .ep-check-item { background: rgba(255,255,255,.02); border: 1px solid transparent; border-radius: 6px; font-size: .78rem; cursor: pointer; transition: border-color .15s; }
+    .ep-check-item.checked { border-color: rgba(245,158,11,.25); background: rgba(245,158,11,.04); }
+
+    /* Audio result */
+    .audio-result-item { background: rgba(255,255,255,.03); border: 1px solid var(--bs-border-color); border-radius: 8px; transition: border-color .2s; }
+    .audio-result-item:hover { border-color: rgba(99,102,241,.3); }
+    .audio-result-item.done { border-left: 3px solid #10b981; }
+    .audio-result-item.error { border-left: 3px solid #ef4444; }
+
+    /* Audio grid cards */
+    #audio-results-list { display: grid !important; grid-template-columns: repeat(5,1fr); gap: 6px; align-content: start; }
+    .audio-card { background: rgba(255,255,255,.03); border: 1px solid var(--bs-border-color); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 4px; transition: all .18s; position: relative; overflow: hidden; }
+    .audio-card:hover { border-color: rgba(99,102,241,.4); background: rgba(99,102,241,.06); transform: translateY(-1px); }
+    .audio-card.done { border-top: 2px solid #10b981; }
+    .audio-card.error { border-top: 2px solid #ef4444; }
+    .audio-card.rendering { border-top: 2px solid #f59e0b; }
+    .audio-card-icon { font-size: 1.1rem; line-height: 1; }
+    .audio-card-name { font-size: .65rem; font-weight: 600; color: #e2e8f0; line-height: 1.3; word-break: break-all; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .audio-card-meta { font-size: .6rem; color: #64748b; }
+    .audio-card-actions { display: flex; gap: 3px; margin-top: auto; }
+    .btn-aca { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 2px; padding: 3px 4px; border-radius: 5px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05); color: #94a3b8; font-size: .6rem; font-weight: 600; cursor: pointer; transition: all .15s; font-family: inherit; }
+    .btn-aca:hover { background: rgba(99,102,241,.2); border-color: rgba(99,102,241,.4); color: #a5b4fc; }
+    .btn-aca.play:hover { background: rgba(16,185,129,.15); border-color: rgba(16,185,129,.4); color: #34d399; }
+    .btn-aca.del:hover { background: rgba(239,68,68,.15); border-color: rgba(239,68,68,.4); color: #f87171; }
+    .btn-aca.rerender:hover { background: rgba(245,158,11,.15); border-color: rgba(245,158,11,.4); color: #fbbf24; }
+    .audio-card .inline-audio-player { grid-column: 1/-1; }
+    .audio-card .inline-audio-player audio { height: 26px; width: 100%; }
+
+    /* Speed buttons */
+    .speed-btn-group { display: flex; gap: 3px; flex-wrap: wrap; }
+    .speed-btn { padding: 3px 7px; border-radius: 5px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); color: #64748b; font-size: .65rem; font-weight: 700; cursor: pointer; transition: all .15s; font-family: 'JetBrains Mono', monospace; }
+    .speed-btn:hover { border-color: rgba(99,102,241,.4); color: #a5b4fc; background: rgba(99,102,241,.1); }
+    .speed-btn.active { background: rgba(99,102,241,.25); border-color: rgba(99,102,241,.6); color: #818cf8; }
+
+    /* Mapping */
+    .mapping-table th { font-size: .72rem; text-transform: uppercase; letter-spacing: .5px; color: #64748b; font-weight: 700; border-color: var(--bs-border-color) !important; }
+    .mapping-table td { border-color: rgba(255,255,255,.04) !important; vertical-align: middle; }
+    .drop-cell { border: 1px dashed rgba(255,255,255,.15); border-radius: 6px; font-size: .75rem; color: #475569; min-height: 36px; display: flex; align-items: center; justify-content: center; transition: all .15s; padding: 0 8px; }
+    .drop-cell.has-item { border-color: rgba(16,185,129,.4); color: #10b981; background: rgba(16,185,129,.05); }
+    .drop-cell.drag-over { border-color: rgba(99,102,241,.6); background: rgba(99,102,241,.08); }
+    .drop-zone-main { border: 2px dashed rgba(255,255,255,.1); border-radius: 10px; color: #475569; font-size: .85rem; transition: all .2s; }
+    .drop-zone-main.drag-over { border-color: rgba(99,102,241,.5); background: rgba(99,102,241,.05); }
+
+    /* Media item */
+    .media-item { background: rgba(255,255,255,.03); border: 1px solid var(--bs-border-color); border-radius: 6px; font-size: .78rem; cursor: grab; transition: border-color .15s; }
+    .media-item:hover { border-color: rgba(99,102,241,.3); }
+
+    /* Output card */
+    .output-card { background: rgba(255,255,255,.03); border: 1px solid var(--bs-border-color); border-radius: 10px; transition: all .2s; overflow: hidden; }
+    .output-card:hover { border-color: rgba(99,102,241,.3); transform: translateY(-2px); }
+    .output-thumb { height: 100px; background: rgba(255,255,255,.04); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+
+    /* WS dot */
+    .ws-dot { width: 8px; height: 8px; border-radius: 50%; background: #475569; display: inline-block; animation: blink 2s ease-in-out infinite; }
+    .ws-dot.connected { background: #10b981; }
+    .ws-dot.error { background: #ef4444; animation: none; }
+    @keyframes blink { 0%,100% { opacity:.6; } 50% { opacity:1; } }
+
+    /* Progress render bar */
+    .render-bar { background: rgba(99,102,241,.06); border: 1px solid rgba(99,102,241,.2); border-radius: 8px; }
+
+    /* Toast */
+    #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+    .toast-item { background: #1a2340; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 10px 16px; font-size: .8rem; display: flex; align-items: center; gap: 8px; min-width: 260px; animation: slide-in .25s ease; pointer-events: auto; }
+    .toast-item.success { border-left: 3px solid #10b981; }
+    .toast-item.error   { border-left: 3px solid #ef4444; }
+    .toast-item.warning { border-left: 3px solid #f59e0b; }
+    .toast-item.info    { border-left: 3px solid #6366f1; }
+    @keyframes slide-in { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:none; } }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-thumb { background: #1e2d4a; border-radius: 4px; }
+
+    .inline-player audio { height: 28px; width: 100%; margin-top: 6px; }
   </style>
 </head>
+<body>
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
 
-<body class="bg-[#090d16] text-slate-100 font-sans min-h-screen selection:bg-indigo-500 selection:text-white pb-12">
-  
-  <!-- Background Glow Orbs -->
-  <div class="fixed top-0 left-1/4 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none"></div>
-  <div class="fixed bottom-0 right-1/4 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl pointer-events-none"></div>
-
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
-
-    <!-- HEADER BAR -->
-    <header class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
-      <div class="flex items-center gap-4">
-        <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-lg glow-purple">
-          <i data-lucide="bot" class="w-7 h-7"></i>
-        </div>
-        <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-xl font-bold tracking-tight text-white">TikTok Auto <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">AIBeta</span></h1>
-            <span class="px-2.5 py-0.5 text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-full">v1.0 Pro</span>
-          </div>
-          <p class="text-xs text-slate-400 mt-0.5">Hệ Thống Tự Động Tạo Kịch Bản AI & Đăng Video TikTok</p>
-        </div>
+  <!-- ===== HEADER ===== -->
+  <header id="studio-header" class="d-flex align-items-center justify-content-between px-3 py-2 sticky-top">
+    <div class="d-flex align-items-center gap-2">
+      <div class="rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
+           style="width:38px;height:38px;background:linear-gradient(135deg,#6366f1,#06b6d4);box-shadow:0 0 18px rgba(99,102,241,.3)">
+        <i class="bi bi-layers-fill text-white fs-5"></i>
       </div>
-
-      <!-- MAIN PAGE MENU SWITCHER -->
-      <nav class="flex items-center gap-2 bg-slate-900/80 p-1.5 rounded-xl border border-slate-800">
-        <a href="/index.html" class="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-indigo-400 bg-indigo-500/10 border border-indigo-500/30 shadow-sm">
-          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
-          <span>TikTok Auto System</span>
-        </a>
-        <a href="/RenderAI.html" class="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition">
-          <i data-lucide="wand-2" class="w-4 h-4 text-amber-400"></i>
-          <span>AI Render Studio</span>
-        </a>
-      </nav>
-
-      <div class="flex items-center gap-3 w-full md:w-auto justify-end">
-        <!-- Status Indicator Pill -->
-        <div id="system-status-pill" class="flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs font-medium">
-          <span class="w-2.5 h-2.5 rounded-full bg-slate-500 pulse-dot" id="status-dot"></span>
-          <span id="status-text" class="text-slate-300">Đang kết nối...</span>
+      <div>
+        <div class="lh-1" style="font-size:1rem;font-weight:800;color:#fff">
+          AIBeta <span style="background:linear-gradient(90deg,#818cf8,#67e8f9);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Studio</span>
         </div>
+        <div class="text-secondary" style="font-size:.68rem">Truyện · Audio · Video</div>
+      </div>
+    </div>
 
-        <!-- Run Trigger Button -->
-        <button id="btn-run-pipeline" class="relative group px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-semibold text-sm shadow-lg glow-purple transition-all duration-300 hover:scale-[1.02] active:scale-95 flex items-center gap-2">
-          <i data-lucide="play" class="w-4 h-4 fill-white"></i>
-          <span>CHẠY PIPELINE NGAY</span>
+    <!-- Nav Tabs -->
+    <ul class="nav nav-tabs gap-1 p-1 rounded-3" style="background:rgba(0,0,0,.25)" id="studioTabs">
+      <li class="nav-item">
+        <button class="nav-link active d-flex align-items-center gap-2 px-3 py-2" data-tab="tab-stories" id="nav-stories">
+          <i class="bi bi-book-half"></i> Truyện
         </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link d-flex align-items-center gap-2 px-3 py-2" data-tab="tab-audio" id="nav-audio">
+          <i class="bi bi-music-note-list"></i> Render Audio
+          <span class="badge rounded-pill" style="background:rgba(99,102,241,.25);color:#a5b4fc;font-size:.68rem" id="badge-audio">0</span>
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link d-flex align-items-center gap-2 px-3 py-2" data-tab="tab-video" id="nav-video">
+          <i class="bi bi-camera-video-fill"></i> Render Video
+          <span class="badge rounded-pill" style="background:rgba(99,102,241,.25);color:#a5b4fc;font-size:.68rem" id="badge-video">0</span>
+        </button>
+      </li>
+    </ul>
+
+    <div class="d-flex align-items-center gap-2">
+      <div class="d-flex align-items-center gap-2 px-3 py-1 rounded-pill border" style="border-color:var(--bs-border-color);font-size:.75rem" id="ws-indicator">
+        <span class="ws-dot" id="ws-dot"></span>
+        <span id="ws-label" class="text-secondary">Đang kết nối...</span>
       </div>
-    </header>
-
-    <!-- NAVIGATION TABS -->
-    <nav class="flex space-x-2 bg-slate-900/60 p-1.5 rounded-xl border border-slate-800/80 backdrop-blur-md overflow-x-auto">
-      <button class="nav-tab active flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 shadow-sm whitespace-nowrap" data-tab="dashboard">
-        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
-        <span>Tổng Quan</span>
+      <button class="btn btn-sm btn-outline-secondary" id="btn-settings" title="Cài đặt">
+        <i class="bi bi-gear-fill"></i>
       </button>
+    </div>
+  </header>
 
-      <button class="nav-tab flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 whitespace-nowrap" data-tab="progress">
-        <i data-lucide="activity" class="w-4 h-4 text-cyan-400"></i>
-        <span>Tiến Trình Realtime</span>
-        <span id="live-progress-badge" class="px-2 py-0.5 text-xs bg-cyan-500/20 text-cyan-300 rounded-full font-bold">0%</span>
-      </button>
+  <main class="studio-main">
 
-      <button class="nav-tab flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 whitespace-nowrap" data-tab="story">
-        <i data-lucide="book-open" class="w-4 h-4 text-amber-400"></i>
-        <span>Truyện Audio</span>
-        <span id="story-episode-badge" class="px-2 py-0.5 text-xs bg-amber-500/20 text-amber-300 rounded-full font-bold">0 tập</span>
-      </button>
-
-      <button class="nav-tab flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 whitespace-nowrap" data-tab="videos">
-        <i data-lucide="film" class="w-4 h-4"></i>
-        <span>Kho Video</span>
-        <span id="video-count-badge" class="ml-1 px-2 py-0.5 text-xs bg-indigo-500/20 text-indigo-300 rounded-full font-bold">0</span>
-      </button>
-
-      <button class="nav-tab flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 whitespace-nowrap" data-tab="config">
-        <i data-lucide="sliders" class="w-4 h-4"></i>
-        <span>Cấu Hình</span>
-      </button>
-    </nav>
-
-    <!-- TAB 1: DASHBOARD MAIN -->
-    <main id="tab-dashboard" class="tab-content space-y-6">
-      
-      <!-- STATS CARDS GRID -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <!-- Stat 1 -->
-        <div class="glass-card rounded-2xl p-5 flex items-center gap-4 border border-slate-800/80 hover:border-slate-700 transition-all">
-          <div class="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-            <i data-lucide="video" class="w-6 h-6"></i>
-          </div>
-          <div>
-            <p class="text-xs font-medium text-slate-400">Video Hôm Nay</p>
-            <h3 class="text-2xl font-bold text-white tracking-tight mt-0.5" id="stat-total">0</h3>
-          </div>
+    <!-- ====== TAB 1: STORIES ====== -->
+    <div id="tab-stories" class="active-tab">
+      <div class="sidebar-panel">
+        <div class="d-flex align-items-center justify-content-between p-2 border-bottom" style="border-color:var(--bs-border-color)!important">
+          <span class="fw-bold text-white d-flex align-items-center gap-2" style="font-size:.8rem">
+            <i class="bi bi-collection-fill text-primary"></i> Thư viện truyện
+          </span>
+          <button class="btn btn-sm btn-accent rounded-2 px-2 py-1 d-flex align-items-center gap-1" id="btn-new-story" style="font-size:.72rem">
+            <i class="bi bi-plus-lg"></i> Mới
+          </button>
         </div>
-
-        <!-- Stat 2 -->
-        <div class="glass-card rounded-2xl p-5 flex items-center gap-4 border border-slate-800/80 hover:border-slate-700 transition-all">
-          <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-            <i data-lucide="check-circle-2" class="w-6 h-6"></i>
-          </div>
-          <div>
-            <p class="text-xs font-medium text-slate-400">Thành Công</p>
-            <h3 class="text-2xl font-bold text-emerald-400 tracking-tight mt-0.5" id="stat-success">0</h3>
-          </div>
-        </div>
-
-        <!-- Stat 3 -->
-        <div class="glass-card rounded-2xl p-5 flex items-center gap-4 border border-slate-800/80 hover:border-slate-700 transition-all">
-          <div class="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-            <i data-lucide="x-circle" class="w-6 h-6"></i>
-          </div>
-          <div>
-            <p class="text-xs font-medium text-slate-400">Thất Bại / Lỗi</p>
-            <h3 class="text-2xl font-bold text-rose-400 tracking-tight mt-0.5" id="stat-failed">0</h3>
-          </div>
-        </div>
-
-        <!-- Stat 4 -->
-        <div class="glass-card rounded-2xl p-5 flex items-center gap-4 border border-slate-800/80 hover:border-slate-700 transition-all">
-          <div class="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
-            <i data-lucide="clock" class="w-6 h-6"></i>
-          </div>
-          <div>
-            <p class="text-xs font-medium text-slate-400">Lịch Đăng Tự Động</p>
-            <h3 class="text-sm font-semibold text-cyan-300 tracking-tight mt-1">08:00 | 12:00 | 18:00</h3>
+        <div class="sidebar-body px-2 py-2 d-flex flex-column gap-1" id="story-list">
+          <div class="text-center text-secondary py-5 d-flex flex-column align-items-center gap-2" id="story-empty-state">
+            <i class="bi bi-book fs-1 opacity-25"></i>
+            <div style="font-size:.8rem">Chưa có truyện nào</div>
+            <div style="font-size:.72rem">Tạo truyện mới để bắt đầu</div>
           </div>
         </div>
       </div>
 
-      <!-- ACTIVE PIPELINE PROGRESS BANNER -->
-      <div id="pipeline-progress-card" class="hidden glass-card rounded-2xl p-5 border border-cyan-500/30 bg-cyan-950/20 space-y-3 animate__animated animate__fadeIn">
-        <div class="flex items-center justify-between text-sm">
-          <div class="flex items-center gap-3 font-semibold text-cyan-300">
-            <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
-            <span id="current-step-label">Đang chạy pipeline...</span>
+      <!-- Editor -->
+      <div class="main-panel">
+        <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom" style="border-color:var(--bs-border-color)!important">
+          <h5 class="mb-0 fw-bold text-white" id="editor-title" style="font-size:.95rem">Truyện mới</h5>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" id="btn-discard" style="display:none!important;font-size:.75rem">Huỷ</button>
+            <button class="btn btn-sm btn-outline-info d-flex align-items-center gap-1" id="btn-download-srt" style="font-size:.72rem;display:none!important" title="Tải file SRT phân đoạn truyện">
+              <i class="bi bi-download"></i> SRT
+            </button>
+            <button class="btn btn-sm btn-accent d-flex align-items-center gap-2" id="btn-save-story" style="font-size:.75rem">
+              <i class="bi bi-save2-fill"></i> Lưu truyện
+            </button>
+
           </div>
-          <span id="progress-percent" class="font-mono text-xs font-bold text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-md border border-cyan-500/20">0%</span>
         </div>
-        <div class="w-full bg-slate-800/80 rounded-full h-2.5 overflow-hidden p-0.5 border border-slate-700/50">
-          <div id="progress-bar-fill" class="bg-gradient-to-r from-indigo-500 to-cyan-400 h-full rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+
+        <div style="flex:1;overflow-y:auto;padding:12px 16px">
+          <div class="row g-2 mb-2">
+            <div class="col-md-7">
+              <label class="form-label text-secondary mb-1" style="font-size:.72rem;font-weight:600"><i class="bi bi-type me-1 opacity-50"></i>Tiêu đề <span class="text-danger">*</span></label>
+              <input type="text" id="input-story-title" class="form-control form-control-sm" placeholder="Vd: Biên Niên Sử Phượng Hoàng">
+            </div>
+            <div class="col-md-5">
+              <label class="form-label text-secondary mb-1" style="font-size:.72rem;font-weight:600"><i class="bi bi-tag me-1 opacity-50"></i>Thể loại</label>
+              <select id="input-story-genre" class="form-select form-select-sm">
+                <option value="romance">Ngôn tình</option>
+                <option value="fantasy">Huyền ảo</option>
+                <option value="action">Hành động</option>
+                <option value="horror">Kinh dị</option>
+                <option value="mystery">Bí ẩn</option>
+                <option value="historical">Lịch sử</option>
+                <option value="modern">Hiện đại</option>
+                <option value="other">Khác</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label text-secondary mb-1" style="font-size:.72rem;font-weight:600"><i class="bi bi-card-text me-1 opacity-50"></i>Mô tả</label>
+            <input type="text" id="input-story-desc" class="form-control form-control-sm" placeholder="Tóm tắt ngắn về truyện...">
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label text-secondary mb-1" style="font-size:.72rem;font-weight:600">
+              <i class="bi bi-link-45deg me-1"></i>Crawl URL <span class="fw-normal opacity-50">(tuỳ chọn)</span>
+            </label>
+            <div class="input-group input-group-sm">
+              <input type="url" id="input-story-url" class="form-control" placeholder="https://metruyencv.com/truyen/...">
+              <button class="btn btn-outline-info" id="btn-crawl-url" style="font-size:.72rem"><i class="bi bi-arrow-repeat me-1"></i>Crawl</button>
+            </div>
+            <div class="form-text" style="font-size:.68rem;color:#475569">Hỗ trợ: metruyencv, truyenfull, wattpad...</div>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label text-secondary d-flex align-items-center justify-content-between mb-1" style="font-size:.72rem;font-weight:600">
+              <span><i class="bi bi-file-earmark-text me-1 opacity-50"></i>Nội dung truyện <span class="text-danger">*</span></span>
+              <span class="text-info font-mono" id="content-word-count" style="font-weight:400;font-size:.7rem"></span>
+            </label>
+            <textarea id="input-story-content" class="form-control story-textarea"
+              placeholder="Dán toàn bộ nội dung truyện vào đây...&#10;&#10;Truyện có thể rất dài (nhiều chương). Hệ thống tự chia tập khi render audio.&#10;&#10;Ví dụ:&#10;Chương 1: Thức Tỉnh&#10;Cô mở mắt trong bóng tối lạnh giá, tim đập dồn dập..."></textarea>
+          </div>
+
+          <!-- Episode Preview -->
+          <div id="episode-preview" class="card border mb-3" style="background:rgba(255,255,255,.02);border-color:var(--bs-border-color)!important;display:none!important">
+            <div class="card-header d-flex align-items-center justify-content-between py-2 px-3" style="background:rgba(255,255,255,.02);border-color:var(--bs-border-color)!important">
+              <span class="fw-semibold text-secondary d-flex align-items-center gap-2" style="font-size:.75rem">
+                <i class="bi bi-list-ol"></i> Xem trước tập
+              </span>
+              <div class="d-flex align-items-center gap-2">
+                <label class="text-secondary" style="font-size:.72rem">Từ/tập:</label>
+                <input type="number" id="words-per-ep" class="form-control form-control-sm" value="0" min="0" max="999999" step="100" style="width:75px">
+                <button class="btn btn-sm btn-outline-primary" id="btn-preview" style="font-size:.72rem">Cập nhật</button>
+              </div>
+            </div>
+            <div class="card-body p-2 d-flex flex-column gap-1 overflow-auto" style="max-height:200px" id="episode-preview-list"></div>
+          </div>
+
+          <div class="text-success" id="story-save-status" style="font-size:.8rem;min-height:18px"></div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ====== TAB 2: RENDER AUDIO ====== -->
+    <div id="tab-audio">
+      <div class="sidebar-panel">
+        <div class="p-2 border-bottom" style="border-color:var(--bs-border-color)!important">
+          <span class="fw-bold text-white d-flex align-items-center gap-2" style="font-size:.8rem">
+            <i class="bi bi-book text-warning"></i> Select Story
+          </span>
+        </div>
+        <div class="sidebar-body p-2 d-flex flex-column gap-1" id="audio-story-list">
+          <div class="text-center text-secondary py-4" style="font-size:.8rem">
+            <i class="bi bi-book fs-3 d-block mb-2 opacity-25"></i>
+            Chưa có truyện<br><small>Tạo truyện ở Tab 1</small>
+          </div>
         </div>
       </div>
 
-      <!-- LIVE ANALYTICS & LOGS GRID -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        <!-- Chart Widget (Left 1 col) -->
-        <div class="glass-card rounded-2xl p-5 border border-slate-800/80 flex flex-col justify-between">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-sm font-bold text-white flex items-center gap-2">
-              <i data-lucide="bar-chart-3" class="w-4 h-4 text-indigo-400"></i>
-              Hiệu Suất Xuất Video
-            </h3>
-            <span class="text-xs text-slate-400">7 ngày gần nhất</span>
+      <div class="main-panel">
+        <!-- Setup -->
+        <div class="d-flex flex-column" style="border-color:var(--bs-border-color)!important;flex:1;overflow:hidden">
+          <div id="audio-placeholder" class="d-flex flex-column align-items-center justify-content-center gap-1 text-secondary py-2">
+            <div style="font-size:.75rem">Chọn truyện từ bảng bên trái</div>
           </div>
-          <div id="analytics-chart" class="w-full h-64"></div>
-        </div>
 
-        <!-- Terminal Logs Window (Right 2 cols) -->
-        <div class="lg:col-span-2 glass-card rounded-2xl overflow-hidden border border-slate-800/80 flex flex-col">
-          <div class="bg-slate-900/90 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-rose-500/80 inline-block"></span>
-              <span class="w-3 h-3 rounded-full bg-amber-500/80 inline-block"></span>
-              <span class="w-3 h-3 rounded-full bg-emerald-500/80 inline-block"></span>
-              <span class="font-mono text-xs text-slate-400 ml-2 font-medium">Terminal Logs (Real-time WebSockets)</span>
+          <div id="audio-setup-content" style="display:none;flex:1;flex-direction:column;overflow:hidden">
+            <div class="d-flex align-items-start justify-content-between p-3 border-bottom" style="border-color:var(--bs-border-color)!important">
+              <div>
+                <h6 class="mb-0 fw-bold text-white" id="audio-story-name">—</h6>
+                <small class="text-secondary" id="audio-story-meta"></small>
+              </div>
+              <button class="btn btn-amber d-flex align-items-center gap-2" id="btn-start-audio-render" style="font-size:.8rem">
+                <i class="bi bi-play-fill"></i> Bắt đầu Render
+              </button>
             </div>
 
-            <div class="flex items-center gap-4 text-xs text-slate-400">
-              <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-200">
-                <input type="checkbox" id="chk-autoscroll" checked class="rounded border-slate-700 bg-slate-800 text-indigo-500 focus:ring-0">
-                Tự cuộn
-              </label>
-              <button id="btn-clear-logs" class="hover:text-rose-400 flex items-center gap-1 transition-colors">
-                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                Xóa logs
+            <div class="d-flex" style="flex:1;overflow:hidden">
+              <!-- LEFT CARD: Voice + Episodes stacked vertically -->
+              <div style="width:550px;min-width:550px;border-right:1px solid var(--bs-border-color);overflow-y:auto;background:rgba(255,255,255,.01)">
+
+                <!-- Voice settings block -->
+                <div class="p-3 border-bottom" style="border-color:var(--bs-border-color)!important">
+                  <div class="fw-bold text-secondary text-uppercase mb-2" style="font-size:.63rem;letter-spacing:.7px">
+                    <i class="bi bi-mic-fill me-1 text-primary opacity-60"></i> Cài đặt giọng đọc
+                  </div>
+                  <div class="mb-2 d-flex gap-2 align-items-start">
+                    <div style="flex:1;min-width:0">
+                      <label class="form-label text-secondary mb-1" style="font-size:.7rem;font-weight:600"><i class="bi bi-person-fill me-1 opacity-40"></i>Giọng đọc</label>
+                      <select id="audio-voice" class="form-select form-select-sm">
+                        <option value="vi-VN-HoaiMyNeural">♀ Nữ — Hoài My (chuẩn)</option>
+                        <option value="vi-VN-NamMinhNeural">♂ Nam — Nam Minh</option>
+                      </select>
+                    </div>
+                    <div style="flex:1;min-width:0">
+                      <label class="form-label text-secondary mb-1 d-flex justify-content-between" style="font-size:.7rem;font-weight:600">
+                        <span><i class="bi bi-speedometer2 me-1 opacity-40"></i>Tốc độ đọc</span>
+                        <span class="text-info font-mono fw-bold" id="rate-val">1×</span>
+                      </label>
+                      <div class="speed-btn-group">
+                        <button class="speed-btn active" data-rate="0">1×</button>
+                        <button class="speed-btn" data-rate="20">1.2×</button>
+                        <button class="speed-btn" data-rate="40">1.4×</button>
+                        <button class="speed-btn" data-rate="60">1.6×</button>
+                        <button class="speed-btn" data-rate="80">1.8×</button>
+                        <button class="speed-btn" data-rate="100">2×</button>
+                      </div>
+                      <input type="hidden" id="audio-rate" value="0">
+                    </div>
+                  </div>
+                  <div>
+                    <label class="form-label text-secondary mb-1 d-flex justify-content-between" style="font-size:.7rem;font-weight:600">
+                      <span><i class="bi bi-volume-up me-1 opacity-40"></i>Âm lượng</span>
+                      <span class="text-primary font-mono fw-bold" id="vol-val">100%</span>
+                    </label>
+                    <input type="range" class="form-range" id="audio-volume" min="50" max="150" value="100" step="5">
+                  </div>
+                </div>
+
+                <!-- Episodes block -->
+                <div class="p-3">
+                  <div class="fw-bold text-secondary text-uppercase mb-2" style="font-size:.63rem;letter-spacing:.7px">
+                    <i class="bi bi-list-check me-1 text-warning opacity-70"></i> Các tập cần render
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label text-secondary mb-1" style="font-size:.7rem"><i class="bi bi-hash opacity-40"></i> Từ mỗi tập <span class="fw-normal opacity-50">(0 = cả chuyện)</span></label>
+                    <input type="number" id="audio-words-per-ep" class="form-control form-control-sm" value="0" min="0" max="999999" step="100">
+                    <div class="form-text" style="font-size:.64rem;color:#3d5070">0 = không chia · 300 ≈ 2 phút · 1000 ≈ 8 phút</div>
+                  </div>
+                  <div class="d-flex align-items-center justify-content-between mb-1">
+                    <label class="text-secondary" style="font-size:.7rem;font-weight:600">Danh sách tập</label>
+                    <div class="d-flex gap-1">
+                      <button class="btn btn-link btn-sm text-primary p-0" id="btn-select-all-ep" style="font-size:.67rem">Tất cả</button>
+                      <span class="text-secondary opacity-40">·</span>
+                      <button class="btn btn-link btn-sm text-secondary p-0" id="btn-deselect-all-ep" style="font-size:.67rem">Bỏ chọn</button>
+                    </div>
+                  </div>
+                  <div class="d-flex flex-column gap-1 overflow-auto" style="max-height:220px" id="episodes-checklist">
+                    <span class="text-secondary" style="font-size:.72rem">Chọn truyện để xem danh sách tập</span>
+                  </div>
+                </div>
+
+              </div>
+
+              <!-- RIGHT: Episode content preview -->
+              <div class="d-flex flex-column" style="flex:1;overflow:hidden;min-width:0">
+                <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom" style="border-color:var(--bs-border-color)!important">
+                  <span class="text-secondary fw-semibold d-flex align-items-center gap-1" style="font-size:.73rem">
+                    <i class="bi bi-file-earmark-text opacity-60"></i> Xem trước nội dung tập
+                  </span>
+                  <select id="preview-ep-select" class="form-select form-select-sm" style="width:auto;font-size:.72rem;max-width:220px">
+                    <option value="">— Chọn tập để xem trước —</option>
+                  </select>
+                </div>
+                <textarea class="form-control border-0 rounded-0 font-mono" id="ep-content-view" readonly
+                  style="flex:1;font-size:.74rem;resize:none;line-height:1.65;background:transparent;color:#64748b"
+                  placeholder="Nội dung tập sẽ hiển thị ở đây..."></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Audio Results -->
+        <div class="d-flex flex-column" style="flex:1;overflow:hidden">
+          <div class="d-flex align-items-center justify-content-between px-3 py-1 border-bottom" style="border-color:var(--bs-border-color)!important">
+            <span class="fw-bold text-white d-flex align-items-center gap-2" style="font-size:.78rem">
+              <i class="bi bi-collection-play text-success"></i> Audio đã render
+              <span class="badge rounded-pill" style="background:rgba(16,185,129,.15);color:#34d399;font-size:.6rem" id="audio-count-badge">0</span>
+            </span>
+            <div class="d-flex gap-1">
+              <button class="btn btn-sm" id="btn-delete-all-audio" style="font-size:.65rem;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);color:#f87171" title="Xóa tất cả audio">
+                <i class="bi bi-trash"></i> Xóa hết
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" id="btn-refresh-audio" style="font-size:.65rem">
+                <i class="bi bi-arrow-clockwise"></i>
               </button>
             </div>
           </div>
 
-          <!-- Log Output Area -->
-          <div id="terminal-logs" class="h-80 overflow-y-auto p-4 font-mono text-xs space-y-1.5 bg-[#070a11]">
-            <div class="text-indigo-400">[INFO] [Dashboard] Giao diện Web Dashboard đã sẵn sàng. Bấm "CHẠY PIPELINE NGAY" để bắt đầu!</div>
+          <div id="audio-render-bar" class="render-bar m-2 p-2" style="display:none">
+            <div class="d-flex justify-content-between mb-1" style="font-size:.75rem">
+              <span id="rpb-label" class="text-secondary">Đang render audio...</span>
+              <span id="rpb-count" class="text-primary fw-bold font-mono">0/0</span>
+            </div>
+            <div class="progress" style="height:4px">
+              <div id="rpb-fill" class="progress-bar bg-primary" style="width:0%;transition:width .4s"></div>
+            </div>
+          </div>
+
+          <div class="flex-grow-1 overflow-auto p-2" id="audio-results-list">
+            <div class="text-center text-secondary py-4 d-flex flex-column align-items-center gap-2">
+              <i class="bi bi-music-note fs-2 opacity-25"></i>
+              <div style="font-size:.8rem">Chưa có audio — hãy bắt đầu render ở trên</div>
+            </div>
           </div>
         </div>
       </div>
-    </main>
+    </div>
 
-    <!-- TAB 2: TIẾN TRÌNH REALTIME & DANH SÁCH -->
-    <section id="tab-progress" class="tab-content hidden space-y-6">
-      <!-- Active Video & Pipeline Overview Banner -->
-      <div class="glass-card rounded-2xl p-6 border border-cyan-500/30 bg-gradient-to-r from-slate-900 via-slate-900/90 to-indigo-950/40 space-y-5">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
-          <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <span class="px-2.5 py-0.5 text-xs font-bold bg-cyan-500/20 text-cyan-300 rounded-full border border-cyan-500/30 flex items-center gap-1">
-                <span class="w-2 h-2 rounded-full bg-cyan-400 pulse-dot"></span>
-                <span id="prg-queue-status">Đang Xử Lý Video 1/3</span>
-              </span>
-              <span id="prg-video-id" class="text-xs font-mono text-slate-400">ID: --</span>
-            </div>
-            <h2 id="prg-video-title" class="text-lg font-bold text-white tracking-tight">Chưa Có Video Nào Đang Chạy...</h2>
-            <p id="prg-video-author" class="text-xs text-slate-400">Tác giả gốc: -- | Mô tả: N/A</p>
+
+    <!-- ====== TAB 3: RENDER VIDEO ====== -->
+    <div id="tab-video">
+      <!-- Top: Media panels -->
+      <div class="d-flex border-bottom" style="height:350px;border-color:var(--bs-border-color)!important;flex-shrink:0">
+        <!-- Audio source (left) -->
+        <div class="sidebar-panel">
+          <div class="d-flex align-items-center justify-content-between p-2 border-bottom" style="border-color:var(--bs-border-color)!important">
+            <span class="fw-bold text-white" style="font-size:.78rem"><i class="bi bi-collection-play-fill text-success me-1"></i> Audio sẵn sàng</span>
+            <button class="btn btn-sm btn-outline-secondary" id="btn-refresh-audio-tab3"><i class="bi bi-arrow-clockwise" style="font-size:.72rem"></i></button>
           </div>
-
-          <!-- Countdown Timers Card -->
-          <div class="flex items-center gap-4 bg-slate-950/80 p-3 rounded-xl border border-slate-800">
-            <div class="text-center px-3 border-r border-slate-800">
-              <span class="text-[11px] font-medium text-slate-400 block">Thời Gian Đã Chạy</span>
-              <span id="prg-timer-elapsed" class="text-lg font-mono font-bold text-white">00:00</span>
-            </div>
-            <div class="text-center px-3">
-              <span class="text-[11px] font-medium text-slate-400 block">Dự Kiến Còn Lại (ETA)</span>
-              <span id="prg-timer-eta" class="text-lg font-mono font-bold text-cyan-400">00:00</span>
+          <div class="px-2 py-1 text-secondary" style="font-size:.68rem">Kéo audio vào vùng ghép bên dưới</div>
+          <div class="sidebar-body p-2 d-flex flex-column gap-1" id="audio-source-list">
+            <div class="text-center text-secondary py-3" style="font-size:.75rem">
+              <i class="bi bi-music-note-list d-block mb-1 opacity-25 fs-4"></i>Chưa có audio
             </div>
           </div>
         </div>
 
-        <!-- Overall Progress Bar -->
-        <div class="space-y-2">
-          <div class="flex justify-between text-xs font-semibold">
-            <span class="text-slate-300 flex items-center gap-1.5">
-              <i data-lucide="gauge" class="w-4 h-4 text-cyan-400"></i>
-              Tiến Trình Tổng Thể Pipeline (Xử Lý Tuần Tự Từng Video)
-            </span>
-            <span id="prg-overall-percent" class="font-mono text-cyan-400 font-bold">0%</span>
+        <!-- Media library (right) -->
+        <div class="main-panel">
+          <div class="d-flex align-items-center justify-content-between p-2 border-bottom" style="border-color:var(--bs-border-color)!important">
+            <span class="fw-bold text-white" style="font-size:.78rem"><i class="bi bi-folder2-open me-1"></i> Thư viện media</span>
+            <div class="d-flex gap-1 flex-wrap">
+              <button class="btn btn-sm" id="mtab-video" onclick="switchMediaTab('video')"
+                style="font-size:.7rem;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:#fbbf24">
+                <i class="bi bi-camera-video me-1"></i>Video nền
+              </button>
+              <button class="btn btn-sm btn-outline-secondary" id="mtab-music" onclick="switchMediaTab('music')" style="font-size:.7rem">
+                <i class="bi bi-music-note me-1"></i>Nhạc nền
+              </button>
+              <label class="btn btn-sm btn-outline-secondary" style="font-size:.7rem;cursor:pointer">
+                <i class="bi bi-upload me-1"></i>Tải video
+                <input type="file" id="file-video-bg" accept="video/*" style="display:none">
+              </label>
+              <label class="btn btn-sm btn-outline-secondary" style="font-size:.7rem;cursor:pointer">
+                <i class="bi bi-music-note-beamed me-1"></i>Tải nhạc
+                <input type="file" id="file-music" accept="audio/*" style="display:none">
+              </label>
+            </div>
           </div>
-          <div class="w-full bg-slate-800/90 rounded-full h-3 overflow-hidden p-0.5 border border-slate-700/60">
-            <div id="prg-overall-bar" class="bg-gradient-to-r from-indigo-500 via-cyan-400 to-emerald-400 h-full rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
-          </div>
-        </div>
-      </div>
 
-      <!-- 5-STEP DETAILED PROGRESS TRACKER GRID -->
-      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <!-- Step 1 Card -->
-        <div id="step-card-1" class="glass-card rounded-xl p-4 border border-slate-800 flex flex-col justify-between space-y-3 opacity-60 transition-all">
-          <div class="flex items-center justify-between">
-            <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-500/30">1</span>
-            <span id="step-badge-1" class="text-[10px] font-bold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">Chờ</span>
+          <div id="media-video-panel" class="p-2 overflow-auto d-flex flex-column gap-1" style="flex:1">
+            <div class="d-flex flex-column gap-1" id="video-bg-source-list">
+              <div class="text-center text-secondary py-4" style="font-size:.75rem">
+                <i class="bi bi-camera-video d-block mb-1 opacity-25 fs-4"></i>Chưa có video nền — tải lên MP4
+              </div>
+            </div>
           </div>
-          <div>
-            <h4 class="text-xs font-bold text-white">Cào Trend TikTok</h4>
-            <p id="step-desc-1" class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">Quét Apify API theo hashtag...</p>
-          </div>
-          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div id="step-bar-1" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%"></div>
-          </div>
-        </div>
-
-        <!-- Step 2 Card -->
-        <div id="step-card-2" class="glass-card rounded-xl p-4 border border-slate-800 flex flex-col justify-between space-y-3 opacity-60 transition-all">
-          <div class="flex items-center justify-between">
-            <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-500/30">2</span>
-            <span id="step-badge-2" class="text-[10px] font-bold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">Chờ</span>
-          </div>
-          <div>
-            <h4 class="text-xs font-bold text-white">Tải Video (yt-dlp)</h4>
-            <p id="step-desc-2" class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">Tải mp4 gốc không watermark...</p>
-          </div>
-          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div id="step-bar-2" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%"></div>
-          </div>
-        </div>
-
-        <!-- Step 3 Card -->
-        <div id="step-card-3" class="glass-card rounded-xl p-4 border border-slate-800 flex flex-col justify-between space-y-3 opacity-60 transition-all">
-          <div class="flex items-center justify-between">
-            <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-500/30">3</span>
-            <span id="step-badge-3" class="text-[10px] font-bold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">Chờ</span>
-          </div>
-          <div>
-            <h4 class="text-xs font-bold text-white">Gemini AI Dịch</h4>
-            <p id="step-desc-3" class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">Rewrite kịch bản sang Tiếng Việt...</p>
-          </div>
-          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div id="step-bar-3" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%"></div>
-          </div>
-        </div>
-
-        <!-- Step 4 Card -->
-        <div id="step-card-4" class="glass-card rounded-xl p-4 border border-slate-800 flex flex-col justify-between space-y-3 opacity-60 transition-all">
-          <div class="flex items-center justify-between">
-            <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-500/30">4</span>
-            <span id="step-badge-4" class="text-[10px] font-bold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">Chờ</span>
-          </div>
-          <div>
-            <h4 class="text-xs font-bold text-white">Voice & Subtitle</h4>
-            <p id="step-desc-4" class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">Edge-TTS & FFmpeg render...</p>
-          </div>
-          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div id="step-bar-4" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%"></div>
-          </div>
-        </div>
-
-        <!-- Step 5 Card -->
-        <div id="step-card-5" class="glass-card rounded-xl p-4 border border-slate-800 flex flex-col justify-between space-y-3 opacity-60 transition-all">
-          <div class="flex items-center justify-between">
-            <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 font-bold text-xs flex items-center justify-center border border-indigo-500/30">5</span>
-            <span id="step-badge-5" class="text-[10px] font-bold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">Chờ</span>
-          </div>
-          <div>
-            <h4 class="text-xs font-bold text-white">Đăng TikTok</h4>
-            <p id="step-desc-5" class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">Playwright browser auto upload...</p>
-          </div>
-          <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-            <div id="step-bar-5" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%"></div>
+          <div id="media-music-panel" class="p-2 overflow-auto d-flex flex-column gap-1" style="flex:1;display:none!important">
+            <div class="d-flex flex-column gap-1" id="music-source-list">
+              <div class="text-center text-secondary py-4" style="font-size:.75rem">
+                <i class="bi bi-music-note-beamed d-block mb-1 opacity-25 fs-4"></i>Chưa có nhạc nền — tải lên MP3
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- BẢNG QUẢN LÝ MASTER PIPELINE TẬP TRUNG (5 CỘT TRẠNG THÁI) -->
-      <div class="glass-card rounded-2xl p-5 border border-slate-800 space-y-4">
-        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div class="flex items-center gap-2">
-            <i data-lucide="table" class="w-5 h-5 text-indigo-400"></i>
-            <h3 class="text-base font-bold text-white">Bảng Quản Lý Tiến Trình Pipeline Video (Master Table)</h3>
+      <!-- Mapping -->
+      <div class="p-3 border-bottom" style="border-color:var(--bs-border-color)!important;flex-shrink:0">
+        <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+          <h6 class="mb-0 text-white d-flex align-items-center gap-2" style="font-size:.85rem">
+            <i class="bi bi-arrows-move text-primary"></i> Merge Zone — Drag & Map Here
+          </h6>
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            <div class="d-flex align-items-center gap-2">
+              <label class="text-secondary" style="font-size:.72rem;white-space:nowrap">Âm lượng nhạc nền</label>
+              <input type="range" id="music-vol-slider" style="width:80px" min="0" max="100" value="30" step="5">
+              <span class="text-warning fw-bold font-mono" id="music-vol-val" style="font-size:.72rem;min-width:28px">30%</span>
+            </div>
+            <button class="btn btn-sm btn-outline-danger" id="btn-clear-mapping" style="font-size:.72rem">
+              <i class="bi bi-trash me-1"></i>Xoá hết
+            </button>
+            <button class="btn btn-sm btn-purple d-flex align-items-center gap-2" id="btn-start-video-render" disabled style="font-size:.8rem">
+              <i class="bi bi-film"></i> Ghép video
+            </button>
           </div>
-          <span class="text-xs text-slate-400 font-mono">Tự động cập nhật Real-time từ WebSocket</span>
         </div>
 
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs text-slate-300 border-collapse">
-            <thead class="bg-slate-900/90 text-slate-300 font-semibold border-b border-slate-800 uppercase text-[11px] tracking-wider">
+        <div class="table-responsive">
+          <table class="table table-dark table-borderless mb-0 mapping-table" style="background:transparent">
+            <thead>
               <tr>
-                <th class="p-3 w-10 text-center">#</th>
-                <th class="p-3 min-w-[220px]">1. Video Gốc & Download</th>
-                <th class="p-3 min-w-[280px]">2. Nội Dung Tập Truyện</th>
-                <th class="p-3 min-w-[180px]">3. Voice & Subtitle</th>
-                <th class="p-3 min-w-[200px]">4. Video Hoàn Chỉnh (Final)</th>
-                <th class="p-3 min-w-[140px] text-center">5. Đăng TikTok</th>
+                <th style="width:40px">#</th>
+                <th><i class="bi bi-music-note-list me-1"></i>Track Audio</th>
+                <th><i class="bi bi-camera-video me-1"></i>Video nền</th>
+                <th><i class="bi bi-music-player me-1"></i>Nhạc nền</th>
+                <th style="width:80px"><i class="bi bi-clock me-1"></i>Thời lượng</th>
+                <th style="width:30px"></th>
               </tr>
             </thead>
-            <tbody id="master-pipeline-tbody" class="divide-y divide-slate-800/80 font-sans">
-              <tr>
-                <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
-                  Chưa có video nào trong danh sách. Bấm <b>"CHẠY PIPELINE NGAY"</b> để bắt đầu cào và xử lý video!
+            <tbody id="mapping-tbody">
+              <tr id="mapping-drop-hint-row">
+                <td colspan="6" class="p-1">
+                  <div class="drop-zone-main text-center py-4" id="drop-zone-main">
+                    <i class="bi bi-arrow-down-circle fs-4 d-block mb-2 opacity-25"></i>
+                    <span style="font-size:.8rem">Kéo audio từ cột bên trái vào đây để tạo hàng ghép</span>
+                  </div>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
-      </div>
-    </section>
 
-    <!-- TAB: TRUYEN AUDIO MANAGEMENT -->
-    <section id="tab-story" class="tab-content hidden space-y-6">
-
-      <!-- Story Info Banner -->
-      <div class="glass-card rounded-2xl p-5 border border-amber-500/20 bg-amber-950/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div class="flex items-center gap-3">
-          <div class="w-11 h-11 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center text-amber-400 flex-shrink-0">
-            <i data-lucide="book-open" class="w-6 h-6"></i>
+        <div id="video-render-bar" class="render-bar mt-2 p-2" style="display:none">
+          <div class="d-flex justify-content-between mb-1" style="font-size:.75rem">
+            <span id="video-rpb-label" class="text-secondary">Đang ghép video...</span>
+            <span id="video-rpb-count" class="text-warning fw-bold font-mono">0/0</span>
           </div>
-          <div>
-            <h2 id="story-title-display" class="text-base font-bold text-white">Chưa có truyện nào</h2>
-            <p id="story-meta-display" class="text-xs text-slate-400 mt-0.5">Dán nội dung truyện vào ô phía dưới để bắt đầu</p>
+          <div class="progress" style="height:4px">
+            <div id="video-rpb-fill" class="progress-bar bg-warning" style="width:0%;transition:width .4s"></div>
           </div>
         </div>
-        <button id="btn-load-story" class="flex-shrink-0 px-4 py-2 bg-amber-600/20 hover:bg-amber-600/35 text-amber-300 border border-amber-500/30 text-xs font-semibold rounded-xl transition flex items-center gap-2">
-          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-          Tải lại truyện
-        </button>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Left: Paste Story Form -->
-        <div class="glass-card rounded-2xl p-5 border border-slate-800/80 space-y-4">
-          <h3 class="text-sm font-bold text-white flex items-center gap-2">
-            <i data-lucide="file-text" class="w-4 h-4 text-amber-400"></i>
-            Nhập Nội Dung Truyện
-          </h3>
+      <!-- Output Videos -->
+      <div class="p-3">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h6 class="mb-0 text-white d-flex align-items-center gap-2" style="font-size:.85rem">
+            <i class="bi bi-collection-play-fill text-success"></i> Video đầu ra
+          </h6>
+          <button class="btn btn-sm btn-outline-secondary" id="btn-refresh-output" style="font-size:.72rem">
+            <i class="bi bi-arrow-clockwise"></i>
+          </button>
+        </div>
+        <div class="row g-3" id="output-video-grid">
+          <div class="col-12 text-center text-secondary py-4" style="font-size:.8rem">
+            <i class="bi bi-film fs-2 d-block mb-2 opacity-25"></i>
+            Chưa có video đầu ra — ghép để xem kết quả
+          </div>
+        </div>
+      </div>
+    </div>
 
-          <div class="space-y-3">
-            <div class="space-y-1.5">
-              <label class="text-xs font-semibold text-slate-300">Tên truyện</label>
-              <input type="text" id="input-story-title" placeholder="Ví dụ: Cô Tiểu Thư Trùng Sinh Báo Thù" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition">
-            </div>
+  </main>
 
-            <div class="space-y-1.5">
-              <label class="text-xs font-semibold text-slate-300">Nội dung truyện (dán toàn bộ hoặc 1 chương)</label>
-              <textarea id="input-story-content" rows="11" placeholder="Dán nội dung truyện vào đây...&#10;&#10;Ví dụ: Chương 1: Ngày Trùng Sinh&#10;&#10;Ánh mắt cô từ từ mở ra trong bóng tối lạnh giá. Mùi máu tanh hôi quen thuộc khiến tim cô thắt lại..." class="w-full px-4 py-3 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm font-mono focus:outline-none focus:border-amber-500 transition resize-none leading-relaxed"></textarea>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
-              <div class="space-y-1.5">
-                <label class="text-xs font-semibold text-slate-300">Số từ/tập (~200 = 70s)</label>
-                <input type="number" id="input-words-per-ep" value="200" min="100" max="500" step="25" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition">
-              </div>
-              <div class="space-y-1.5">
-                <label class="text-xs font-semibold text-slate-300">Bắt đầu từ tập</label>
-                <input type="number" id="input-start-episode" value="1" min="1" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition">
-              </div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
-              <div class="space-y-1.5">
-                <label class="text-xs font-semibold text-slate-300">Số tập render lần này</label>
-                <input type="number" id="input-max-episodes" value="3" min="1" max="20" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition">
-              </div>
-              <div class="space-y-1.5">
-                <label class="text-xs font-semibold text-slate-300">Âm lượng nhạc Lofi (0-1)</label>
-                <input type="number" id="input-music-vol" value="0.40" min="0" max="1" step="0.05" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-amber-500 transition">
+  <!-- ===== SETTINGS MODAL ===== -->
+  <div class="modal fade" id="settingsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border" style="background:#0f1626;border-color:rgba(99,102,241,.2)!important">
+        <div class="modal-header border-bottom" style="border-color:var(--bs-border-color)!important">
+          <h5 class="modal-title text-white d-flex align-items-center gap-2">
+            <i class="bi bi-gear-fill text-primary"></i> Settings & API Keys
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="form-settings">
+          <div class="modal-body d-flex flex-column gap-3">
+            <div>
+              <label class="form-label text-secondary" style="font-size:.75rem;font-weight:600">
+                <i class="bi bi-key-fill me-1"></i>Gemini API Key
+              </label>
+              <input type="password" id="cfg-gemini" class="form-control form-control-sm" placeholder="AIzaSy...">
+              <div class="form-text" style="font-size:.7rem">
+                Miễn phí tại <a href="https://aistudio.google.com/apikey" target="_blank" class="text-info">aistudio.google.com</a>
               </div>
             </div>
-          </div>
-
-          <div class="flex gap-3 pt-1">
-            <button id="btn-save-story" class="w-full py-3 px-4 bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg">
-              <i data-lucide="save" class="w-4 h-4"></i>
-              Lưu &amp; Phân Đoạn Truyện
-            </button>
-          </div>
-          <p id="story-save-status" class="text-xs font-medium text-emerald-400 min-h-[18px]"></p>
-        </div>
-
-        <!-- Right: Episodes List -->
-        <div class="glass-card rounded-2xl p-5 border border-slate-800/80 space-y-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-white flex items-center gap-2">
-              <i data-lucide="list" class="w-4 h-4 text-amber-400"></i>
-              Danh Sách Tập Truyện
-            </h3>
-            <span id="total-episodes-badge" class="px-2.5 py-1 text-xs bg-amber-500/15 text-amber-300 border border-amber-500/25 rounded-full font-bold">0 tập</span>
-          </div>
-
-          <div id="episodes-list" class="space-y-2 max-h-[520px] overflow-y-auto pr-1">
-            <div class="text-center text-slate-500 text-sm py-12">
-              <i data-lucide="book" class="w-10 h-10 mx-auto mb-3 opacity-30"></i>
-              <p>Chưa có truyện nào<br><span class="text-xs">Dán nội dung và bấm "Lưu & Phân Đoạn"</span></p>
+            <div>
+              <label class="form-label text-secondary" style="font-size:.75rem;font-weight:600">Apify API Token</label>
+              <input type="password" id="cfg-apify" class="form-control form-control-sm" placeholder="apify_api_...">
+            </div>
+            <div class="row g-3">
+              <div class="col-6">
+                <label class="form-label text-secondary" style="font-size:.75rem;font-weight:600">Hashtag video nền</label>
+                <input type="text" id="cfg-hashtags" class="form-control form-control-sm" placeholder="satisfying,building,craft">
+              </div>
+              <div class="col-6">
+                <label class="form-label text-secondary" style="font-size:.75rem;font-weight:600">Giọng mặc định</label>
+                <select id="cfg-voice" class="form-select form-select-sm">
+                  <option value="vi-VN-HoaiMyNeural">Nữ: Hoài My</option>
+                  <option value="vi-VN-NamMinhNeural">Nam: Nam Minh</option>
+                </select>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- TAB 3: KHO VIDEO OUTPUT -->
-    <section id="tab-videos" class="tab-content hidden space-y-4">
-      <div class="flex items-center justify-between bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
-        <div>
-          <h2 class="text-lg font-bold text-white flex items-center gap-2">
-            <i data-lucide="film" class="w-5 h-5 text-indigo-400"></i>
-            Kho Video Đã Render Sẵn Đăng
-          </h2>
-          <p class="text-xs text-slate-400">Tự động lưu tại thư mục <code>workspace/output/</code></p>
-        </div>
-        <button id="btn-refresh-videos" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition flex items-center gap-2">
-          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-          Làm mới
-        </button>
-      </div>
-
-      <!-- Video Grid Container -->
-      <div id="video-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        <!-- Rendered by JS -->
-      </div>
-    </section>
-
-    <!-- TAB 4: CONFIG FORM -->
-    <section id="tab-config" class="tab-content hidden">
-      <div class="glass-card rounded-2xl p-6 sm:p-8 border border-slate-800/80 max-w-3xl mx-auto space-y-6">
-        <div>
-          <h2 class="text-lg font-bold text-white flex items-center gap-2">
-            <i data-lucide="key-round" class="w-5 h-5 text-indigo-400"></i>
-            Cấu Hình Hệ Thống & API Keys
-          </h2>
-          <p class="text-xs text-slate-400 mt-1">Cấu hình dưới đây được đồng bộ tự động với file <code>.env</code> dự án.</p>
-        </div>
-
-        <form id="form-config" class="space-y-5">
-          <!-- Apify Token -->
-          <div class="space-y-1.5">
-            <label for="input-apify" class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <i data-lucide="shield-check" class="w-4 h-4 text-cyan-400"></i>
-              Apify API Token (Cào TikTok Trend)
-            </label>
-            <input type="password" id="input-apify" placeholder="apify_api_..." class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition">
-            <p class="text-[11px] text-slate-500">Lấy miễn phí $5 credit/tháng tại: <a href="https://console.apify.com/settings/integrations" target="_blank" class="text-cyan-400 hover:underline">console.apify.com</a></p>
-          </div>
-
-          <!-- Gemini Key -->
-          <div class="space-y-1.5">
-            <label for="input-gemini" class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <i data-lucide="sparkles" class="w-4 h-4 text-indigo-400"></i>
-              Google Gemini API Key (AI Dịch & Kịch Bản)
-            </label>
-            <input type="password" id="input-gemini" placeholder="AIzaSy..." class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition">
-            <p class="text-[11px] text-slate-500">Lấy miễn phí tại: <a href="https://aistudio.google.com/apikey" target="_blank" class="text-cyan-400 hover:underline">aistudio.google.com</a></p>
-          </div>
-
-          <!-- Hashtags & Max Videos -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div class="space-y-1.5">
-              <label for="input-hashtags" class="text-xs font-semibold text-slate-300">Hashtags Video Nền (cào TikTok)</label>
-              <input type="text" id="input-hashtags" placeholder="satisfying,building,craft,lego" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 transition">
-              <p class="text-[11px] text-slate-500">Video nền cho Truyện Audio khi đọc truyện</p>
+          <div class="modal-footer border-top d-flex align-items-center justify-content-between" style="border-color:var(--bs-border-color)!important">
+            <small class="text-success" id="settings-save-msg"></small>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Huỷ</button>
+              <button type="submit" class="btn btn-sm btn-accent">
+                <i class="bi bi-save me-1"></i>Lưu cài đặt
+              </button>
             </div>
-
-            <div class="space-y-1.5">
-              <label for="input-max-videos" class="text-xs font-semibold text-slate-300">Số Video/Lần Chạy</label>
-              <input type="number" id="input-max-videos" min="1" max="20" value="3" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 transition">
-            </div>
-          </div>
-
-          <!-- Min Views & Voice -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div class="space-y-1.5">
-              <label for="input-min-views" class="text-xs font-semibold text-slate-300">Min View Lọc Video Nền</label>
-              <input type="number" id="input-min-views" value="10000" step="5000" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 transition">
-            </div>
-
-            <div class="space-y-1.5">
-              <label for="input-voice" class="text-xs font-semibold text-slate-300">Giọng Đọc AI (Edge-TTS)</label>
-              <select id="input-voice" class="w-full px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 transition">
-                <option value="vi-VN-HoaiMyNeural">Nữ: Hoài My (vi-VN-HoaiMyNeural)</option>
-                <option value="vi-VN-NamMinhNeural">Nam: Nam Minh (vi-VN-NamMinhNeural)</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="pt-2 flex items-center gap-4">
-            <button type="submit" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-semibold text-sm hover:opacity-90 transition flex items-center gap-2 shadow-lg glow-purple">
-              <i data-lucide="save" class="w-4 h-4"></i>
-              Lưu Cấu Hình
-            </button>
-            <span id="save-status" class="text-xs font-medium text-emerald-400"></span>
           </div>
         </form>
       </div>
-    </section>
-
+    </div>
   </div>
 
-  <!-- App Script -->
-  <script src="app.js"></script>
+  <div id="toast-container"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="studio-app.js"></script>
+  <script>
+    // Tab switching
+    document.querySelectorAll('#studioTabs .nav-link').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#studioTabs .nav-link').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.studio-main > div').forEach(t => t.classList.remove('active-tab'));
+        btn.classList.add('active');
+        const tabId = btn.dataset.tab;
+        document.getElementById(tabId).classList.add('active-tab');
+        if (tabId === 'tab-audio') refreshAudioStoryList();
+        if (tabId === 'tab-video') { refreshAudioSourceList(); refreshMediaFiles(); refreshOutputVideos(); }
+      });
+    });
+
+    // Settings modal
+    document.getElementById('btn-settings').addEventListener('click', () => {
+      const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
+      modal.show();
+      fetch('/api/config').then(r=>r.json()).then(res => {
+        if (!res.success) return;
+        document.getElementById('cfg-gemini').value  = res.config.geminiKey || '';
+        document.getElementById('cfg-apify').value   = res.config.apifyToken || '';
+        document.getElementById('cfg-hashtags').value = res.config.hashtags || '';
+        document.getElementById('cfg-voice').value   = res.config.voiceName || 'vi-VN-HoaiMyNeural';
+      });
+    });
+    document.getElementById('form-settings').addEventListener('submit', async e => {
+      e.preventDefault();
+      const body = {
+        geminiKey:  document.getElementById('cfg-gemini').value,
+        apifyToken: document.getElementById('cfg-apify').value,
+        hashtags:   document.getElementById('cfg-hashtags').value,
+        voiceName:  document.getElementById('cfg-voice').value,
+      };
+      const res = await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }).then(r=>r.json());
+      const msg = document.getElementById('settings-save-msg');
+      if (res.success) {
+        msg.textContent = '✓ Đã lưu!';
+        showToast('Đã lưu cài đặt thành công!', 'success');
+        setTimeout(() => { bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide(); msg.textContent = ''; }, 1500);
+      } else { msg.textContent = 'Error: ' + res.error; }
+    });
+
+    // Media tab switch
+    function switchMediaTab(tab) {
+      const vBtn = document.getElementById('mtab-video');
+      const mBtn = document.getElementById('mtab-music');
+      vBtn.style.cssText = tab === 'video' ? 'font-size:.7rem;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:#fbbf24' : 'font-size:.7rem';
+      vBtn.className = tab === 'video' ? 'btn btn-sm' : 'btn btn-sm btn-outline-secondary';
+      mBtn.style.cssText = tab === 'music' ? 'font-size:.7rem;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:#fbbf24' : 'font-size:.7rem';
+      mBtn.className = tab === 'music' ? 'btn btn-sm' : 'btn btn-sm btn-outline-secondary';
+      document.getElementById('media-video-panel').style.display = tab === 'video' ? 'flex' : 'none';
+      document.getElementById('media-music-panel').style.display = tab === 'music' ? 'flex' : 'none';
+    }
+  </script>
 </body>
 </html>
