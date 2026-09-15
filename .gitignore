@@ -9,3 +9,7 @@ config/tiktok-session.json
 .DS_Store
 AIBeta/bin/
 bin/
+.venv/
+venv/
+**/__pycache__/
+*.py[cod]

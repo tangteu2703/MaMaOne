@@ -5,6 +5,7 @@
   "main": "pipeline.js",
   "type": "commonjs",
   "scripts": {
+    "dev": "node server.js",
     "start": "node scheduler.js",
     "run-now": "node pipeline.js",
     "run-hashtag": "node pipeline.js --hashtags",
