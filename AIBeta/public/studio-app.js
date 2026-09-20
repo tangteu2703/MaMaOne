@@ -70,6 +70,7 @@ function connectWS() {
     State.ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
+        console.log(`📡 [WS] ← ${msg.type}`, msg.data || '');
         handleWsMessage(msg);
       } catch {}
     };
@@ -84,6 +85,20 @@ function handleWsMessage(msg) {
     case 'audio_render_complete':
       onAudioRenderComplete(msg.data);
       break;
+    case 'audio_chunk_progress': {
+      const d = msg.data;
+      const label = document.getElementById('rpb-label');
+      if (label) {
+        const pct = d.totalChunks > 0 ? Math.round(d.chunk / d.totalChunks * 100) : 0;
+        const bar = '█'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));
+        label.innerHTML = `<span class="text-info font-mono" style="font-size:.7rem">
+          🎙️ Tập ${d.episodeIndex} &nbsp;|&nbsp; chunk ${d.chunk}/${d.totalChunks} &nbsp;|&nbsp; ${pct}% &nbsp;|&nbsp; ${d.elapsedMs}ms
+          <span style="letter-spacing:0;color:#34d399">${bar}</span>
+        </span>`;
+      }
+      console.log(`🎙️ [Chunk] Tập ${d.episodeIndex} ${d.chunk}/${d.totalChunks} — ${d.elapsedMs}ms`);
+      break;
+    }
     case 'video_render_progress':
       onVideoRenderProgress(msg.data);
       break;
@@ -231,21 +246,57 @@ function showEpisodePreview(episodes) {
 
 async function previewEpisodes() {
   const content = document.getElementById('input-story-content').value;
-  const wordsPerEp = parseInt(document.getElementById('words-per-ep').value) || 300;
+  const rawVal = parseInt(document.getElementById('words-per-ep').value);
+  const wordsPerEp = isNaN(rawVal) ? 300 : rawVal; // 0 = không chia tập (all in 1)
   if (!content.trim()) return;
-  // Call API with temp save or just show estimate client-side
-  const lines = content.split(/\n\n+/);
+
+  // Nếu wordsPerEp = 0 → toàn bộ là 1 tập
+  if (wordsPerEp === 0) {
+    const totalWords = content.trim().split(/\s+/).filter(w => w.length > 0).length;
+    showEpisodePreview([{
+      index: 1,
+      wordCount: totalWords,
+      preview: content.trim().substring(0, 80) + '...',
+      estimatedDurationSeconds: Math.round(totalWords / 2.8)
+    }]);
+    return;
+  }
+
+  // Tách thành các đoạn (paragraph), nếu không có double-newline thì tách theo từng dòng
+  let paragraphs = content.split(/\n\n+/).map(p => p.trim()).filter(p => p.length > 0);
+  if (paragraphs.length <= 1) {
+    // Không có double-newline → tách theo single newline
+    paragraphs = content.split(/\n/).map(p => p.trim()).filter(p => p.length > 0);
+  }
+  if (paragraphs.length <= 1) {
+    // Vẫn chỉ 1 khối → tách theo câu (dấu chấm, chấm than, chấm hỏi)
+    paragraphs = content.split(/(?<=[.!?])\s+/).map(p => p.trim()).filter(p => p.length > 0);
+  }
+
   let eps = [], current = [], currentWords = 0;
-  for (const para of lines) {
-    const wc = para.trim().split(/\s+/).length;
-    if (currentWords + wc > wordsPerEp * 1.3 && currentWords >= wordsPerEp * 0.7) {
-      eps.push({ index: eps.length + 1, wordCount: currentWords, preview: current[0]?.substring(0, 80) + '...', estimatedDurationSeconds: Math.round(currentWords / 2.8) });
+  for (const para of paragraphs) {
+    const wc = para.split(/\s+/).filter(w => w.length > 0).length;
+    // Nếu thêm paragraph này sẽ vượt quá wordsPerEp → cắt tập mới
+    if (currentWords > 0 && currentWords + wc > wordsPerEp) {
+      eps.push({
+        index: eps.length + 1,
+        wordCount: currentWords,
+        preview: current[0]?.substring(0, 80) + '...',
+        estimatedDurationSeconds: Math.round(currentWords / 2.8)
+      });
       current = []; currentWords = 0;
     }
-    current.push(para.trim());
+    current.push(para);
     currentWords += wc;
   }
-  if (current.length) eps.push({ index: eps.length + 1, wordCount: currentWords, preview: current[0]?.substring(0, 80) + '...', estimatedDurationSeconds: Math.round(currentWords / 2.8) });
+  if (current.length) {
+    eps.push({
+      index: eps.length + 1,
+      wordCount: currentWords,
+      preview: current[0]?.substring(0, 80) + '...',
+      estimatedDurationSeconds: Math.round(currentWords / 2.8)
+    });
+  }
   showEpisodePreview(eps);
 }
 
@@ -340,15 +391,22 @@ async function selectAudioStory(id) {
   State.selectedStoryId = id;
   document.querySelectorAll('.audio-story-item').forEach(el => el.classList.toggle('selected', el.onclick?.toString().includes(`'${id}'`)));
 
-  const wordsPerEp = parseInt(document.getElementById('audio-words-per-ep')?.value) || 0;
-  const res = await api('GET', `/api/stories/${id}?wordsPerEpisode=${wordsPerEp}`);
+  // Không truyền wordsPerEpisode → server tự lấy từ meta đã lưu lúc tạo truyện
+  const res = await api('GET', `/api/stories/${id}`);
   if (!res.success) { showToast('Không thể tải truyện!', 'error'); return; }
   State.selectedStoryData = res;
+
+  // Đồng bộ input audio-words-per-ep với giá trị đã lưu từ bên Truyện
+  const audioWpeInput = document.getElementById('audio-words-per-ep');
+  if (audioWpeInput && res.wordsPerEpisode !== undefined) {
+    audioWpeInput.value = res.wordsPerEpisode;
+  }
 
   document.getElementById('audio-placeholder').style.display = 'none';
   document.getElementById('audio-setup-content').style.display = 'flex';
   document.getElementById('audio-story-name').textContent = res.title;
-  document.getElementById('audio-story-meta').textContent = `${formatWords(res.wordCount)} · ${res.episodes.length} tập`;
+  const wpeLabel = res.wordsPerEpisode > 0 ? ` · ${res.wordsPerEpisode} từ/tập` : ' · không chia';
+  document.getElementById('audio-story-meta').textContent = `${formatWords(res.wordCount)} · ${res.episodes.length} tập${wpeLabel}`;
 
   buildEpisodesChecklist(res.episodes);
   buildEpisodePreviewSelect(res.episodes);
@@ -412,6 +470,7 @@ async function startAudioRender() {
 
   const voiceName = document.getElementById('audio-voice').value;
   const rate = parseInt(document.getElementById('audio-rate').value);
+  const rateLabel = document.querySelector('.speed-btn.active')?.textContent || '1×';
   const volume = parseInt(document.getElementById('audio-volume').value);
   const wordsPerEp = parseInt(document.getElementById('audio-words-per-ep').value) || 0;
 
@@ -421,9 +480,13 @@ async function startAudioRender() {
     voiceName, rate, volume, wordsPerEpisode: wordsPerEp,
   };
 
-  console.group('🎙️ [Render Audio] Request');
-  console.log('Payload:', JSON.stringify(payload, null, 2));
+  console.group(`🎙️ [Render Audio] Bắt đầu — tốc độ ${rateLabel} (rate=${rate} → edge-tts: +${rate}%)`);
+  console.log('Voice:', voiceName);
+  console.log('Episodes:', selectedEps);
+  console.log('Payload đầy đủ:', payload);
   console.groupEnd();
+
+  State._renderStartTime = Date.now();
 
   const btn = document.getElementById('btn-start-audio-render');
   btn.disabled = true; btn.innerHTML = '<i class="bi bi-arrow-repeat spin me-1"></i> Đang render...';
@@ -431,8 +494,10 @@ async function startAudioRender() {
   try {
     const res = await api('POST', '/api/render-audio', payload);
 
-    console.group('🎙️ [Render Audio] Response');
-    console.log('Response:', JSON.stringify(res, null, 2));
+    console.group('🎙️ [Render Audio] Server Response');
+    console.log('jobId:', res.jobId);
+    console.log('total tập:', res.total);
+    console.log('→ Đang render ngầm, chờ WebSocket cập nhật...');
     console.groupEnd();
 
     if (res.success) {
@@ -461,7 +526,8 @@ function showAudioRenderBar(total) {
   bar.style.display = 'block';
   document.getElementById('rpb-count').textContent = `0/${total}`;
   document.getElementById('rpb-fill').style.width = '0%';
-  document.getElementById('rpb-label').textContent = 'Đang render audio...';
+  document.getElementById('rpb-label').innerHTML =
+    `<span class="text-secondary">⏳ Đang khởi động render <span class="blink-dot">...</span></span>`;
 }
 
 function onAudioRenderProgress(data) {
@@ -472,7 +538,16 @@ function onAudioRenderProgress(data) {
   const done = data.done || 0;
   document.getElementById('rpb-count').textContent = `${done}/${total}`;
   document.getElementById('rpb-fill').style.width = `${Math.round(done/total*100)}%`;
-  document.getElementById('rpb-label').textContent = `Đang render Tập ${data.episodeIndex}...`;
+  document.getElementById('rpb-label').innerHTML =
+    `<span class="text-warning">🔊 Tập ${data.episodeIndex}/${total} &nbsp;·&nbsp; <span class="text-secondary" style="font-size:.7rem">chờ TTS...</span> <span class="blink-dot text-warning">▶</span></span>`;
+
+  const elapsed = State._renderStartTime ? ((Date.now() - State._renderStartTime) / 1000).toFixed(1) : '?';
+  console.group(`✅ [Render Progress] Tập ${data.episodeIndex} — ${done}/${total}`);
+  console.log('Thời gian render:', elapsed + 's');
+  console.log('File:', data.filename, `(${data.fileSizeKB} KB)`);
+  console.log('Duration audio:', data.durationSeconds ? data.durationSeconds + 's' : 'unknown');
+  console.log('Status:', data.status);
+  console.groupEnd();
 
   // Add result card immediately
   if (data.filename) {
@@ -483,6 +558,8 @@ function onAudioRenderProgress(data) {
 }
 
 function onAudioRenderComplete(data) {
+  const elapsed = State._renderStartTime ? ((Date.now() - State._renderStartTime) / 1000).toFixed(1) : '?';
+  console.log(`🏁 [Render Complete] Tổng thời gian: ${elapsed}s | ${data.results?.length || 0} tập xong`);
   showToast('Hoàn thành render audio!', 'success');
   resetRenderBtn();
   refreshAudioFiles();

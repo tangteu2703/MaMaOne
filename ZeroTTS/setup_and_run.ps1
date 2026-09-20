@@ -1,5 +1,6 @@
-﻿$ErrorActionPreference = "Stop"
-$ROOT = "E:\3.Projects\ZeroTTS"
+$ErrorActionPreference = "Stop"
+$ROOT = $PSScriptRoot
+if (-not $ROOT) { $ROOT = (Get-Item -Path ".").FullName }
 $VENV  = Join-Path $ROOT ".venv"
 $WEBUI = Join-Path $ROOT "webui"
 

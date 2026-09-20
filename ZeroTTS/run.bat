@@ -4,6 +4,13 @@ cd /d "%~dp0"
 
 set PYTHON="%~dp0.venv\Scripts\python.exe"
 
+rem ── Corporate proxy SSL bypass ──────────────────────────────────────────────
+set PYTHONHTTPSVERIFY=0
+set HF_HUB_DISABLE_SSL_CHECK=1
+set REQUESTS_CA_BUNDLE=
+set CURL_CA_BUNDLE=
+rem ────────────────────────────────────────────────────────────────────────────
+
 echo.
 echo ============================================================
 echo   ZeroTTS WebUI - Dang khoi dong...

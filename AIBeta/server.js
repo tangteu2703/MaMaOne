@@ -7,6 +7,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
+const axios = require('axios');
 const { WebSocketServer } = require('ws');
 const logger = require('./src/logger');
 const config = require('./config/config');
@@ -93,7 +94,7 @@ function getConfigData() {
     minViews: process.env.MIN_VIEW_COUNT || '10000',
     voiceName: process.env.VOICE_NAME || 'vi-VN-HoaiMyNeural',
     storyTitle: process.env.STORY_TITLE || 'Câu Chuyện Của Tôi',
-    wordsPerEpisode: process.env.WORDS_PER_EPISODE || '200',
+    wordsPerEpisode: process.env.WORDS_PER_EPISODE || '10000',
     musicVolume: process.env.MUSIC_VOLUME || '0.40',
   };
 }
@@ -473,19 +474,24 @@ app.get('/api/stories', (req, res) => {
 app.get('/api/stories/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const wordsPerEp = parseInt(req.query.wordsPerEpisode) ?? 0;
     const txtFile = path.join(STORIES_DIR, `${id}.txt`);
     const metaFile = path.join(STORIES_DIR, `${id}.json`);
     if (!fs.existsSync(txtFile)) return res.status(404).json({ success: false, error: 'Không tìm thấy truyện' });
     const content = fs.readFileSync(txtFile, 'utf8');
     const meta = fs.existsSync(metaFile) ? JSON.parse(fs.readFileSync(metaFile, 'utf8')) : {};
+    // Ưu tiên: query param → meta đã lưu → 10000 (mặc định truyện dài)
+    const queryWpe = parseInt(req.query.wordsPerEpisode);
+    const wordsPerEp = (!isNaN(queryWpe) && queryWpe > 0) ? queryWpe : (meta.wordsPerEpisode || 10000);
     const episodes = splitStoryIntoEpisodes(content, wordsPerEp);
     res.json({
       success: true,
       id,
       title: meta.originalTitle || meta.title || id,
+      genre: meta.genre || '',
+      description: meta.description || '',
       content,
       wordCount: content.split(/\s+/).filter(Boolean).length,
+      wordsPerEpisode: wordsPerEp,
       episodes: episodes.map(ep => ({
         index: ep.index,
         title: ep.title,
@@ -501,8 +507,89 @@ app.get('/api/stories/:id', (req, res) => {
 });
 
 
+// POST /api/fetch-url — Lấy nội dung truyện từ URL
+app.post('/api/fetch-url', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ success: false, error: 'Thiếu URL' });
+    const https = url.startsWith('https') ? require('https') : require('http');
+    const rawUrl = new URL(url);
+    const options = {
+      hostname: rawUrl.hostname,
+      path: rawUrl.pathname + rawUrl.search,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+    };
+    const data = await new Promise((resolve, reject) => {
+      const req2 = https.get(options, (r) => {
+        let body = '';
+        r.on('data', c => body += c);
+        r.on('end', () => resolve(body));
+      });
+      req2.on('error', reject);
+      req2.setTimeout(10000, () => { req2.destroy(); reject(new Error('Timeout')); });
+    });
+    // Strip HTML tags, get text content
+    const text = data
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+      .replace(/\s{3,}/g, '\n\n')
+      .trim();
+    // Try to extract title from <title> tag
+    const titleMatch = data.match(/<title[^>]*>([^<]{3,100})<\/title>/i);
+    const title = titleMatch ? titleMatch[1].split(/[|\-–]/)[0].trim() : '';
+    if (text.length < 200) return res.status(400).json({ success: false, error: 'Nội dung quá ngắn hoặc trang không thể đọc được' });
+    res.json({ success: true, content: text, title });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
-// POST /api/stories — Tạo truyện mới
+// POST /api/ai-story — Tạo truyện bằng Gemini AI
+app.post('/api/ai-story', async (req, res) => {
+  try {
+    const { prompt, targetWords } = req.body;
+    if (!prompt) return res.status(400).json({ success: false, error: 'Thiếu prompt' });
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(400).json({ success: false, error: 'Chưa cấu hình GEMINI_API_KEY trong .env' });
+    const words = parseInt(targetWords) || 1000;
+    const systemPrompt = `Bạn là một nhà văn chuyên viết truyện ngắn tiếng Việt hấp dẫn. Hãy viết một câu chuyện hoàn chỉnh dựa trên ý tưởng sau, với khoảng ${words} từ. Chỉ trả về nội dung câu chuyện, không thêm giải thích hay tiêu đề ngoài. Tên truyện đặt ở dòng đầu tiên theo dạng: TIÊU ĐỀ: [tên truyện]\n\nÝ tưởng: ${prompt}`;
+    const https = require('https');
+    const payload = JSON.stringify({
+      contents: [{ parts: [{ text: systemPrompt }] }],
+      generationConfig: { maxOutputTokens: Math.round(words * 3), temperature: 0.9 },
+    });
+    const geminiRes = await new Promise((resolve, reject) => {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+      const r = new URL(url);
+      const req2 = https.request({
+        hostname: r.hostname, path: r.pathname + r.search, method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+      }, (res2) => {
+        let body = ''; res2.on('data', c => body += c); res2.on('end', () => resolve(body));
+      });
+      req2.on('error', reject);
+      req2.setTimeout(30000, () => { req2.destroy(); reject(new Error('Timeout')); });
+      req2.write(payload); req2.end();
+    });
+    const parsed = JSON.parse(geminiRes);
+    if (parsed.error) return res.status(400).json({ success: false, error: parsed.error.message });
+    const rawText = parsed.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    // Extract title from first line if present
+    const lines = rawText.split('\n');
+    let title = '';
+    let content = rawText;
+    if (lines[0] && lines[0].startsWith('TIÊU ĐỀ:')) {
+      title = lines[0].replace('TIÊU ĐỀ:', '').trim();
+      content = lines.slice(1).join('\n').trim();
+    }
+    res.json({ success: true, content, title });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post('/api/stories', (req, res) => {
   try {
     const { title, content, genre, description, wordsPerEpisode } = req.body;
@@ -510,22 +597,23 @@ app.post('/api/stories', (req, res) => {
       return res.status(400).json({ success: false, error: 'Nội dung truyện quá ngắn!' });
     }
     const { saveStoryToFile } = require('./src/story/storyReader');
-    const safeId = (title || 'story').replace(/[^\w\s-]/g, '').replace(/\s+/g, '_').substring(0, 50) || `story_${Date.now()}`;
     const savedPath = saveStoryToFile(content, title || 'Truyện Mới');
-    // Lưu thêm meta genre, description
+    const safeId = path.basename(savedPath, '.txt');
+    // Lưu thêm meta genre, description, wordsPerEpisode
     const metaFile = savedPath.replace('.txt', '.json');
     const existingMeta = fs.existsSync(metaFile) ? JSON.parse(fs.readFileSync(metaFile, 'utf8')) : {};
+    const wpeToSave = parseInt(wordsPerEpisode) || 10000;
     fs.writeFileSync(metaFile, JSON.stringify({
       ...existingMeta,
       genre: genre || '',
       description: description || '',
-      createdAt: new Date().toISOString(),
+      wordsPerEpisode: wpeToSave,
+      createdAt: existingMeta.createdAt || new Date().toISOString(),
     }, null, 2));
-    const wpe = parseInt(wordsPerEpisode) || 0;
-    const episodes = splitStoryIntoEpisodes(content, wpe);
+    const episodes = splitStoryIntoEpisodes(content, wpeToSave);
     const wordCount = content.split(/\s+/).filter(Boolean).length;
-    logger.success('Studio', `Truyện mới: "${title}" (${wordCount} từ, ${episodes.length} tập)`);
-    res.json({ success: true, id: safeId, title, wordCount, episodeCount: episodes.length, message: `Đã lưu truyện "${title}" (${episodes.length} tập)` });
+    logger.success('Studio', `Đã lưu truyện: "${title}" (${wordCount} từ, ${episodes.length} tập)`);
+    res.json({ success: true, id: safeId, title, wordCount, episodeCount: episodes.length, wordsPerEpisode: wpeToSave, message: `Đã lưu truyện "${title}" (${episodes.length} tập)` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -551,16 +639,16 @@ const audioRenderJobs = {};
 // POST /api/render-audio — Render audio một hoặc nhiều tập
 app.post('/api/render-audio', async (req, res) => {
   try {
-    const { storyId, episodes, voiceName, rate, pitch, volume, wordsPerEpisode } = req.body;
+    const { storyId, episodes, voiceName, rate, pitch, volume, wordsPerEpisode, engine, speed, preset, zerottsUrl } = req.body;
     const txtFile = path.join(STORIES_DIR, `${storyId}.txt`);
     if (!fs.existsSync(txtFile)) return res.status(404).json({ success: false, error: 'Không tìm thấy truyện' });
     const content = fs.readFileSync(txtFile, 'utf8');
     const metaFile = path.join(STORIES_DIR, `${storyId}.json`);
     const meta = fs.existsSync(metaFile) ? JSON.parse(fs.readFileSync(metaFile, 'utf8')) : {};
     const storyTitle = meta.originalTitle || meta.title || storyId;
-    // Chia tập từ file .txt gốc theo wordsPerEpisode
-    // KHÔNG dùng SRT vì SRT lưu từng câu subtitle nhỏ (5-10 từ), không phải nội dung đầy đủ của tập
-    const allEpisodes = splitStoryIntoEpisodes(content, parseInt(wordsPerEpisode) || 0);
+    // Chia tập từ file .txt gốc theo wordsPerEpisode của truyện
+    const storyWpe = parseInt(wordsPerEpisode) || meta.wordsPerEpisode || 10000;
+    const allEpisodes = splitStoryIntoEpisodes(content, storyWpe);
     const episodesToRender = episodes && episodes.length > 0
       ? allEpisodes.filter(ep => episodes.includes(ep.index))
       : allEpisodes;
@@ -580,19 +668,47 @@ app.post('/api/render-audio', async (req, res) => {
         const audioFileName = `${safeTitle}_Tap${ep.index}.mp3`;
         const audioPath = path.join(AUDIO_DIR, audioFileName);
         try {
-          logger.info('Studio', `Render audio: ${audioFileName} (${ep.wordCount} từ)...`);
+          logger.info('Studio', `Render audio: ${audioFileName} (${ep.wordCount} từ | engine: ${engine || 'edgetts'})...`);
           // Ghi script ra file tạm
           const tempId = `studio_${storyId}_ep${ep.index}`;
 
           // Override VOICE_NAME via env
           if (voiceName) process.env.VOICE_NAME = voiceName;
 
+          // Tạo stream cho ZeroTTS nếu dùng engine zerotts
+          let streamId = null;
+          let streamUrl = null;
+          const currentZtUrl = zerottsUrl || process.env.ZEROTTS_URL || 'http://localhost:7860';
+          if (engine === 'zerotts') {
+            try {
+              const sRes = await axios.post(`${currentZtUrl}/api/tts/create-stream`, {}, { timeout: 5000 });
+              if (sRes.data && sRes.data.streamId) {
+                streamId = sRes.data.streamId;
+                streamUrl = `/api/zerotts-stream/${streamId}`;
+                broadcast('audio_stream_started', {
+                  jobId,
+                  episodeIndex: ep.index,
+                  episodeTitle: ep.title || `Tập ${ep.index}`,
+                  streamId,
+                  streamUrl,
+                  engine: 'zerotts'
+                });
+                logger.info('Studio', `  Live stream ready: ${streamUrl}`);
+              }
+            } catch (sErr) {
+              logger.warn('Studio', `  Không thể tạo live stream: ${sErr.message}`);
+            }
+          }
+
           // Tính rate string đúng định dạng edge-tts: UI gửi số % tăng thêm (ví dụ 33 = +33% ≈ 1.6x)
           const rateStr = (rate !== undefined && rate !== null && rate !== 0)
             ? (rate > 0 ? `+${rate}%` : `${rate}%`)
             : '+0%';
           logger.info('Studio', `Rate: ${rateStr} (raw: ${rate})`);
-          await generateVoice(tempId, ep.content, rateStr);
+          await generateVoice(tempId, ep.content, rateStr, ({ chunk, totalChunks, elapsedMs }) => {
+            broadcast('audio_chunk_progress', { jobId, episodeIndex: ep.index, chunk, totalChunks, elapsedMs });
+            logger.info('Studio', `  Chunk ${chunk}/${totalChunks} OK (${elapsedMs}ms)`);
+          }, { engine, voiceName, speed, preset, zerottsUrl, streamId });
 
           // Copy từ audio cache sang thư mục audio studio
           const tempAudioPath = path.join(__dirname, 'workspace', 'audio', `${tempId}.mp3`);
@@ -642,6 +758,68 @@ app.get('/api/render-audio/status/:jobId', (req, res) => {
   const job = audioRenderJobs[req.params.jobId];
   if (!job) return res.status(404).json({ success: false, error: 'Job không tồn tại' });
   res.json({ success: true, ...job });
+});
+
+// GET /api/voice-preview/zerotts/:name — Xem thử giọng ZeroTTS
+app.get('/api/voice-preview/zerotts/:name', async (req, res) => {
+  const { name } = req.params;
+  const currentZtUrl = process.env.ZEROTTS_URL || 'http://localhost:7860';
+  try {
+    const streamRes = await axios.get(`${currentZtUrl}/api/voices/${encodeURIComponent(name)}/preview`, {
+      responseType: 'stream',
+      timeout: 10000,
+    });
+    res.setHeader('Content-Type', 'audio/wav');
+    streamRes.data.pipe(res);
+  } catch (err) {
+    res.status(404).json({ success: false, error: 'Không tìm thấy mẫu giọng ZeroTTS' });
+  }
+});
+
+// GET /api/voice-preview/edgetts/:name — Mẫu giọng Edge-TTS
+app.get('/api/voice-preview/edgetts/:name', async (req, res) => {
+  const { name } = req.params;
+  const previewDir = path.join(AUDIO_DIR, 'previews');
+  fs.mkdirSync(previewDir, { recursive: true });
+  const previewFile = path.join(previewDir, `${name}.mp3`);
+  if (fs.existsSync(previewFile) && fs.statSync(previewFile).size > 1000) {
+    return res.sendFile(previewFile);
+  }
+  const voiceTitle = name.includes('NamMinh') ? 'Nam Minh' : 'Hoài My';
+  const sampleText = `Xin chào! Đây là giọng đọc mẫu ${voiceTitle} trên AIBeta Studio.`;
+  try {
+    const { execFile } = require('child_process');
+    const tempTxt = previewFile.replace('.mp3', '.txt');
+    fs.writeFileSync(tempTxt, sampleText, 'utf8');
+    execFile(config.paths.edgeTts, ['--voice', name, '--file', tempTxt, '--write-media', previewFile], { timeout: 15000 }, (err) => {
+      try { fs.unlinkSync(tempTxt); } catch {}
+      if (!err && fs.existsSync(previewFile)) {
+        res.sendFile(previewFile);
+      } else {
+        res.status(500).json({ success: false, error: 'Không thể tạo mẫu giọng Edge-TTS' });
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/zerotts-stream/:sid — Proxy luồng phát audio trực tiếp từ ZeroTTS
+app.get('/api/zerotts-stream/:sid', async (req, res) => {
+  const { sid } = req.params;
+  const currentZtUrl = process.env.ZEROTTS_URL || 'http://localhost:7860';
+  try {
+    const streamRes = await axios.get(`${currentZtUrl}/zerotts/stream/${sid}.wav`, {
+      responseType: 'stream',
+      timeout: 600000,
+    });
+    res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Accept-Ranges', 'none');
+    streamRes.data.pipe(res);
+  } catch (err) {
+    res.status(404).end();
+  }
 });
 
 // GET /api/audio-files — Danh sách file audio đã render

@@ -1058,3 +1058,21 @@ select.form-input { cursor: pointer; appearance: none; background-image: url("da
   .brand-sub { display: none; }
   .ws-status { display: none; }
 }
+
+/* ---- Render Progress Live Log ---- */
+@keyframes blink-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
+}
+.blink-dot {
+  display: inline-block;
+  animation: blink-pulse 0.8s ease-in-out infinite;
+}
+@keyframes ticker-slide {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+#rpb-label span {
+  animation: ticker-slide 0.15s ease-out;
+}
+.font-mono { font-family: 'Consolas', 'JetBrains Mono', monospace; }

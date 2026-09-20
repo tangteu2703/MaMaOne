@@ -369,7 +369,7 @@ def generate_stream(
         tag = voice_name if use_voice else "uncond"
         out_path = os.path.join(GENERATED_DIR, f"{ts}_{tag or 'uncond'}.wav")
         sf.write(out_path, full, tts.sample_rate, subtype="PCM_16")
-        with open(out_path + ".json", "w") as f:
+        with open(out_path + ".json", "w", encoding="utf-8") as f:
             json.dump({"voice": voice_name if use_voice else None,
                        "cfg_scale": cfg_scale,
                        "text": text.strip().replace("\n", " ")[:200],

@@ -20,7 +20,37 @@ import argparse
 import base64
 import inspect
 import os
+import ssl
 import sys
+
+# ── SSL corporate-proxy bypass ────────────────────────────────────────────────
+# Cho phép kết nối qua proxy nội bộ có self-signed certificate.
+os.environ.setdefault("PYTHONHTTPSVERIFY", "0")
+os.environ.setdefault("CURL_CA_BUNDLE", "")
+os.environ.setdefault("REQUESTS_CA_BUNDLE", "")
+os.environ.setdefault("HF_HUB_DISABLE_SSL_CHECK", "1")
+os.environ.setdefault("HUGGINGFACE_HUB_VERBOSITY", "warning")
+
+# Patch ssl module globally (covers httpx, requests, urllib3)
+ssl._create_default_https_context = ssl._create_unverified_context  # type: ignore[attr-defined]
+
+# Patch httpx SSL verify = False globally
+try:
+    import httpx
+    _orig_init = httpx.Client.__init__
+    def _patched_init(self, *args, **kwargs):
+        kwargs.setdefault("verify", False)
+        _orig_init(self, *args, **kwargs)
+    httpx.Client.__init__ = _patched_init
+
+    _orig_async_init = httpx.AsyncClient.__init__
+    def _patched_async_init(self, *args, **kwargs):
+        kwargs.setdefault("verify", False)
+        _orig_async_init(self, *args, **kwargs)
+    httpx.AsyncClient.__init__ = _patched_async_init
+except Exception:
+    pass
+# ─────────────────────────────────────────────────────────────────────────────
 
 import gradio as gr
 
@@ -701,9 +731,123 @@ def main() -> None:
     # audio route is registered before the server starts. Gradio goes at "/" —
     # audio_stream.STREAM_ROUTE assumes that.
     import uvicorn
-    from fastapi import FastAPI
+    from fastapi import FastAPI, HTTPException
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse, FileResponse
 
-    app = FastAPI()
+    app = FastAPI(title="ZeroTTS API")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    api = FastAPI(title="ZeroTTS REST API")
+    api.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @api.get("/tts-status")
+    async def get_tts_status():
+        return {"ok": True, "status": "ok", "message": "ZeroTTS online"}
+
+    @api.get("/voices")
+    async def get_voices():
+        out = []
+        for v in engine._load_voices():
+            label = v.display_name or v.name
+            if v.tags:
+                label = f"{label} — {', '.join(v.tags)}"
+            has_prev = bool(v.preview_path and os.path.isfile(v.preview_path))
+            out.append({
+                "name": v.name,
+                "label": label,
+                "displayName": v.display_name or v.name,
+                "language": v.language,
+                "tags": v.tags,
+                "description": v.description,
+                "hasPreview": has_prev,
+                "previewUrl": f"/api/voices/{v.name}/preview" if has_prev else None,
+            })
+        return {"voices": out}
+
+    @api.get("/voices/{name}/preview")
+    async def get_voice_preview(name: str):
+        path = engine.voice_preview_path(name)
+        if not path or not os.path.isfile(path):
+            raise HTTPException(status_code=404, detail="Không tìm thấy mẫu giọng")
+        return FileResponse(path, media_type="audio/wav")
+
+    @api.post("/tts/create-stream")
+    async def api_create_stream():
+        sr = engine.get_sample_rate()
+        sid = audio_stream.open_stream(sr)
+        return {"success": True, "streamId": sid, "streamUrl": f"/zerotts/stream/{sid}.wav", "sampleRate": sr}
+
+    @api.post("/tts")
+    async def api_tts(req: dict):
+        text = (req.get("text") or "").strip()
+        if not text:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Text trống"})
+        voice = req.get("voice") or "maichi"
+        speed = float(req.get("speed") or 1.0)
+        preset = req.get("preset") or ""
+        cfg = float(req.get("cfg_scale") or 1.0)
+        temp = float(req.get("temperature") or 0.8)
+        topk = int(req.get("topk") or 25)
+        stream_id = req.get("stream_id")
+
+        for pk, pv in STORY_PRESETS.items():
+            if preset and (preset.lower() in pk.lower() or pk.lower() in preset.lower()):
+                p_speed, p_temp, p_topk, p_cfg, _ = pv
+                if "speed" not in req:
+                    speed = p_speed
+                temp = p_temp
+                topk = p_topk
+                cfg = p_cfg
+                break
+
+        res = {}
+        try:
+            for _sr, chunk in engine.generate_stream(
+                text=text,
+                voice_name=voice,
+                cfg_scale=cfg,
+                audio_temperature=temp,
+                audio_topk=topk,
+                result=res,
+            ):
+                if stream_id:
+                    audio_stream.push(stream_id, chunk)
+        except Exception as e:
+            if stream_id:
+                audio_stream.close(stream_id)
+            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+        finally:
+            if stream_id:
+                audio_stream.close(stream_id)
+
+        saved = res.get("path")
+        if saved and os.path.exists(saved):
+            if abs(speed - 1.0) >= 0.01:
+                try:
+                    engine.apply_speed(saved, speed)
+                except Exception as e:
+                    print(f"Warning: apply_speed failed: {e}")
+            sr = engine.get_sample_rate()
+            dur = (res.get("n_samples", 0) / sr / speed) if sr and speed else 0
+            return {"success": True, "outputPath": saved, "filename": os.path.basename(saved), "durationSec": round(dur, 2)}
+        return JSONResponse(status_code=500, content={"success": False, "error": "Không tạo được audio"})
+
+    # Mount /api TRƯỚC khi Gradio chiếm root "/".
+    # Starlette resolve mount theo thứ tự nên /api/* phải đứng trước /.
+    app.mount("/api", api)
     _ensure_stream_route(app)
     app = gr.mount_gradio_app(app, demo.queue(default_concurrency_limit=4), path="/",
                               **(_STYLE if _STYLE_ON_MOUNT else {}))
@@ -712,3 +856,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -100,8 +100,8 @@ module.exports = {
     storiesDir: path.join(__dirname, '../workspace/stories'),
     // File truyện mặc định
     storyFile: process.env.STORY_FILE || path.join(__dirname, '../workspace/stories/story.txt'),
-    // Số từ mỗi tập video (~200 từ = ~70-80 giây audio TTS tiếng Việt)
-    wordsPerEpisode: parseInt(process.env.WORDS_PER_EPISODE || '200'),
+    // Số từ mỗi tập video (mặc định 10.000 từ/tập cho truyện dài)
+    wordsPerEpisode: parseInt(process.env.WORDS_PER_EPISODE || '10000'),
     // Tên truyện đang hoạt động
     activeStoryTitle: process.env.STORY_TITLE || 'Câu Chuyện Của Tôi',
     // Nhạc nền lofi (đường dẫn file hoặc 'none')
