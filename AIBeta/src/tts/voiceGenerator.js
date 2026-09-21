@@ -39,16 +39,29 @@ async function generateVoice(videoId, script, rateStr, onChunkProgress, options 
 
   // ZeroTTS AI Engine (Local)
   if (engine === 'zerotts') {
-    logger.info(MODULE, `Đang kết nối ZeroTTS AI engine (voice=${voiceName})...`);
+    logger.info(MODULE, `Đang kết nối ZeroTTS AI engine (voice=${voiceName} | speed=${options.speed} | preset=${options.preset || '-'})...`);
     try {
-      const ztResult = await tryZeroTTS(script, outputPath, { ...options, voiceName });
+      const ztResult = await tryZeroTTS(script, outputPath, { ...options, voiceName }, onChunkProgress);
       if (ztResult && fs.existsSync(ztResult) && fs.statSync(ztResult).size > 1000) {
         if (onChunkProgress) onChunkProgress({ chunk: 1, totalChunks: 1, elapsedMs: 1000 });
         return ztResult;
       }
+      logger.warn(MODULE, `ZeroTTS trả về rỗng hoặc file không tồn tại — fallback Edge-TTS`);
     } catch (err) {
       logger.warn(MODULE, `ZeroTTS thất bại: ${err.message} — fallback Edge-TTS`);
     }
+    // Bug fix: ZeroTTS voice names (giahuy, maichi...) không hợp lệ với Edge-TTS
+    // → dùng voice mặc định Edge-TTS thay vì pass ZeroTTS voice name
+    const fallbackEdgeVoice = 'vi-VN-HoaiMyNeural';
+    logger.info(MODULE, `Fallback Edge-TTS với voice mặc định: ${fallbackEdgeVoice}`);
+    const edgeResult = await tryEdgeTTS(script, outputPath, rate, fallbackEdgeVoice, onChunkProgress);
+    if (edgeResult && fs.existsSync(edgeResult) && fs.statSync(edgeResult).size > 5000) {
+      logger.success(MODULE, `✅ Fallback Edge-TTS OK (${fallbackEdgeVoice})`);
+      return edgeResult;
+    }
+    // Fallback cuối cùng: Google TTS
+    logger.warn(MODULE, `Edge-TTS cũng thất bại — fallback Google TTS`);
+    return tryGoogleTTS(videoId, script, outputPath);
   }
 
   // Edge-TTS: luôn ưu tiên khi có voice tùy chỉnh hoặc rate khác 0
@@ -324,53 +337,121 @@ async function tryEdgeTTS(script, outputPath, rateStr, voiceName, onChunkProgres
 }
 
 /**
- * Render giọng đọc bằng ZeroTTS (Local AI)
+ * Render giọng đọc bằng ZeroTTS (Local AI) — CHUNK mode để tránh timeout
+ * Mỗi chunk ~300 từ, timeout riêng 180s/chunk, concat WAV rồi apply speed.
  */
-async function tryZeroTTS(script, outputPath, options = {}) {
+async function tryZeroTTS(script, outputPath, options = {}, onChunkProgress) {
   const zerottsUrl = options.zerottsUrl || process.env.ZEROTTS_URL || 'http://localhost:7860';
   const voice = options.voiceName || process.env.ZEROTTS_VOICE || 'maichi';
-  const speed = options.speed !== undefined ? options.speed : 1.0;
+  const speed = options.speed !== undefined ? parseFloat(options.speed) : 1.0;
   const preset = options.preset || '';
+  const streamId = options.streamId || null; // chỉ dùng cho chunk đầu
+  const ffmpegPath = config.paths.ffmpeg || 'ffmpeg';
 
-  const streamId = options.streamId || null;
+  // ── Chia text thành chunks ~300 từ theo ranh giới câu ──────────────────────
+  const ZT_WORDS_PER_CHUNK = 300;
+  const chunks = splitTextIntoChunks(script, ZT_WORDS_PER_CHUNK);
+  logger.info(MODULE, `ZeroTTS: voice=${voice} | speed=${speed} | preset=${preset} | ${chunks.length} chunk(s) x ~${ZT_WORDS_PER_CHUNK}từ | stream_id=${streamId || 'none'}`);
 
-  logger.info(MODULE, `ZeroTTS call: voice=${voice} speed=${speed} preset=${preset} stream_id=${streamId || 'none'} -> ${zerottsUrl}`);
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  const wavPaths = [];
 
-  const resp = await axios.post(`${zerottsUrl}/api/tts`, {
-    text: script,
-    voice,
-    speed,
-    preset,
-    stream_id: streamId,
-  }, { timeout: 300000 });
+  for (let i = 0; i < chunks.length; i++) {
+    const chunkWav = outputPath.replace('.mp3', `_zt_chunk${i}.wav`);
+    const payload = {
+      text: chunks[i],
+      voice,
+      speed: 1.0,       // generate tốc độ gốc, apply_speed sau khi ghép
+      preset,
+      stream_id: i === 0 ? streamId : null,  // live stream chỉ chunk đầu
+    };
+    const t0 = Date.now();
+    logger.info(MODULE, `  ZeroTTS chunk ${i+1}/${chunks.length} (${chunks[i].split(' ').length} từ)...`);
 
-  if (resp.data && resp.data.success && resp.data.outputPath && fs.existsSync(resp.data.outputPath)) {
-    const srcWav = resp.data.outputPath;
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    try {
+      const resp = await axios.post(`${zerottsUrl}/api/tts`, payload, { timeout: 180000 });
+      const elapsed = Date.now() - t0;
+      logger.info(MODULE, `  Chunk ${i+1} response: success=${resp.data?.success} | durationSec=${resp.data?.durationSec} | ${elapsed}ms`);
 
-    // Chuyển wav sang mp3 bằng ffmpeg
-    const ffmpegPath = config.paths.ffmpeg || 'ffmpeg';
-    await new Promise((resolve) => {
-      execFile(ffmpegPath, ['-y', '-i', srcWav, '-codec:a', 'libmp3lame', '-b:a', '192k', outputPath], (err) => {
-        if (!err && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
-          resolve(outputPath);
-        } else {
-          // Nếu ffmpeg lỗi hoặc không có libmp3lame, copy thẳng file wav đổi tên hoặc giữ nguyên
-          try {
-            fs.copyFileSync(srcWav, outputPath);
-            resolve(outputPath);
-          } catch (copyErr) {
-            resolve(null);
+      if (!resp.data?.success || !resp.data?.outputPath) {
+        throw new Error(`ZeroTTS chunk ${i+1} failed: success=false`);
+      }
+      const srcWav = resp.data.outputPath;
+      if (!fs.existsSync(srcWav)) {
+        throw new Error(`outputPath không tồn tại: ${srcWav}`);
+      }
+      // Copy WAV chunk về thư mục output
+      fs.copyFileSync(srcWav, chunkWav);
+      wavPaths.push(chunkWav);
+      if (onChunkProgress) onChunkProgress({ chunk: i + 1, totalChunks: chunks.length, elapsedMs: elapsed });
+    } catch (err) {
+      logger.warn(MODULE, `  ZeroTTS chunk ${i+1} thất bại: ${err.message}`);
+      // Dọn dẹp các chunk đã tạo
+      wavPaths.forEach(p => { try { fs.unlinkSync(p); } catch {} });
+      throw err; // Propagate để generateVoice fallback Edge-TTS
+    }
+  }
+
+  // ── Ghép tất cả WAV chunks thành 1 file ─────────────────────────────────
+  let mergedWav;
+  if (wavPaths.length === 1) {
+    mergedWav = wavPaths[0];
+  } else {
+    mergedWav = outputPath.replace('.mp3', '_zt_merged.wav');
+    const listFile = mergedWav + '_list.txt';
+    const listContent = wavPaths.map(p => `file '${p.replace(/\\/g, '/')}'`).join('\n');
+    fs.writeFileSync(listFile, listContent, 'utf8');
+    await new Promise((resolve, reject) => {
+      execFile(ffmpegPath, ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', mergedWav],
+        { timeout: 120000 }, (err) => {
+          try { fs.unlinkSync(listFile); } catch {}
+          if (!err && fs.existsSync(mergedWav)) resolve();
+          else reject(new Error('ffmpeg concat WAV thất bại'));
+        });
+    });
+    wavPaths.forEach(p => { try { fs.unlinkSync(p); } catch {} });
+  }
+
+  // ── Apply speed vào WAV đã ghép ───────────────────────────────────────────
+  if (Math.abs(speed - 1.0) >= 0.01) {
+    logger.info(MODULE, `  Áp dụng speed x${speed} vào WAV đã ghép...`);
+    const atempo = speed > 2.0
+      ? `atempo=2.0,atempo=${(speed/2.0).toFixed(3)}`
+      : `atempo=${speed.toFixed(3)}`;
+    const speedWav = mergedWav.replace('.wav', '_speed.wav');
+    await new Promise((resolve, reject) => {
+      execFile(ffmpegPath, ['-y', '-i', mergedWav, '-af', atempo, speedWav],
+        { timeout: 120000 }, (err) => {
+          if (!err && fs.existsSync(speedWav)) {
+            try { fs.unlinkSync(mergedWav); } catch {}
+            mergedWav = speedWav;
+            resolve();
+          } else {
+            logger.warn(MODULE, `  apply_speed ffmpeg lỗi, giữ nguyên speed 1x`);
+            resolve(); // không reject, vẫn có audio 1x
           }
+        });
+    });
+  }
+
+  // ── Convert WAV sang MP3 ────────────────────────────────────────────────────
+  await new Promise((resolve) => {
+    execFile(ffmpegPath, ['-y', '-i', mergedWav, '-codec:a', 'libmp3lame', '-b:a', '192k', outputPath],
+      { timeout: 120000 }, (err) => {
+        if (!err && fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
+          resolve();
+        } else {
+          try { fs.copyFileSync(mergedWav, outputPath); } catch {}
+          resolve();
         }
       });
-    });
+  });
+  try { fs.unlinkSync(mergedWav); } catch {}
 
-    if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
-      const sizeKB = (fs.statSync(outputPath).size / 1024).toFixed(1);
-      logger.success(MODULE, `✅ ZeroTTS OK: ${path.basename(outputPath)} (${sizeKB} KB)`);
-      return outputPath;
-    }
+  if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 1000) {
+    const sizeKB = (fs.statSync(outputPath).size / 1024).toFixed(1);
+    logger.success(MODULE, `✅ ZeroTTS OK: ${path.basename(outputPath)} (${sizeKB} KB) | ${chunks.length} chunks | speed x${speed}`);
+    return outputPath;
   }
   return null;
 }

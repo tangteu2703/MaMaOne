@@ -131,6 +131,12 @@ select.form-select option{background:#111827}
 @keyframes spin{to{transform:rotate(360deg)}}.spin{animation:spin 1s linear infinite}
 input[type=range]{accent-color:var(--ac)}
 hr.d{border:none;border-top:1px solid var(--brd);margin:0}
+/* AI model bar */
+.ai-model-bar{display:flex;align-items:center;background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.2);border-radius:8px;padding:5px 9px;gap:0}
+/* AI chapter tabs */
+.ai-chap-tab{padding:3px 9px;border-radius:5px;border:1px solid var(--brd);background:rgba(255,255,255,.03);color:var(--tx2);font-size:.67rem;font-weight:600;cursor:pointer;transition:all .14s}
+.ai-chap-tab:hover{border-color:var(--brda);color:var(--tx)}
+.ai-chap-tab.active{border-color:var(--ac);background:rgba(99,102,241,.12);color:var(--ac2)}
 </style>
 </head>
 <body>
@@ -185,6 +191,7 @@ hr.d{border:none;border-top:1px solid var(--brd);margin:0}
       <span class="phdtitle" id="sd-hd-title">Chọn một truyện để xem chi tiết</span>
       <div class="ms-auto d-flex gap-2" id="sd-acts" style="display:none!important">
         <button class="btn btn-g btn-sm" onclick="editSelStory()" style="font-size:.7rem"><i class="bi bi-pencil me-1"></i>Sửa</button>
+        <button class="btn btn-g btn-sm" onclick="toggleAIAppend()" id="btn-ai-append" style="font-size:.7rem;border-color:rgba(99,102,241,.4);color:var(--ac2)" title="Dùng AI viết tiếp nội dung vào truyện này"><i class="bi bi-stars me-1"></i>Viết tiếp AI</button>
         <button class="btn btn-primary btn-sm" onclick="ST('voice')" style="font-size:.7rem"><i class="bi bi-mic me-1"></i>Tạo Voice</button>
       </div>
     </div>
@@ -221,6 +228,43 @@ hr.d{border:none;border-top:1px solid var(--brd);margin:0}
           <label class="form-label mb-0" style="font-size:.7rem">Từ/tập:</label>
           <input type="number" id="wpe" class="form-control" value="10000" min="100" max="100000" step="500" style="width:82px;height:26px;font-size:.74rem;padding:2px 7px" oninput="reloadEps()">
           <button class="btic" onclick="reloadEps()"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+        <!-- AI APPEND PANEL -->
+        <div id="ai-append-panel" style="display:none;background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.22);border-radius:10px;padding:12px;margin-bottom:12px">
+          <div style="font-size:.73rem;font-weight:700;color:var(--ac2);margin-bottom:8px"><i class="bi bi-stars me-1"></i>Viết tiếp bằng AI — ghép vào truyện hiện tại</div>
+          <div class="row g-2 mb-2">
+            <div class="col-12">
+              <div class="ai-model-bar">
+                <i class="bi bi-cpu me-1" style="color:var(--ac)"></i>
+                <span style="font-size:.68rem;font-weight:700;color:var(--tx2)">Model:</span>
+                <select id="ap-model" class="form-select ms-2" style="height:26px;font-size:.7rem;flex:1;max-width:200px">
+                  <option value="gemini-2.5-pro">✨ Gemini 2.5 Pro</option>
+                  <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash</option>
+                  <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                  <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro</option>
+                </select>
+              </div>
+            </div>
+            <div class="col-8">
+              <label class="form-label">💡 Yêu cầu thêm (tùy chọn)</label>
+              <input type="text" id="ap-prompt" class="form-control" placeholder="VD: 'Tiếp tục cảnh nhân vật khảm phá hang động...' (bỏ trống = AI tự quyết định)" style="height:30px;font-size:.73rem">
+            </div>
+            <div class="col-4">
+              <label class="form-label">📈 Độ dài</label>
+              <select id="ap-words" class="form-select" style="height:30px;font-size:.77rem">
+                <option value="500">~500 từ</option>
+                <option value="1000" selected>~1.000 từ</option>
+                <option value="2000">~2.000 từ</option>
+                <option value="3000">~3.000 từ</option>
+                <option value="5000">~5.000 từ</option>
+              </select>
+            </div>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" onclick="appendAIChapter()" id="btn-append-ai" style="font-size:.77rem;flex:1"><i class="bi bi-stars me-1"></i>Viết & Ghép vào truyện</button>
+            <button class="btn btn-g" onclick="toggleAIAppend()" style="font-size:.77rem"><i class="bi bi-x"></i></button>
+          </div>
+          <div id="ap-st" style="font-size:.7rem;color:var(--tx2);margin-top:6px;min-height:16px"></div>
         </div>
         <div id="sd-eps-list"></div>
       </div>
@@ -454,14 +498,81 @@ hr.d{border:none;border-top:1px solid var(--brd);margin:0}
       <div id="url-pv" class="cv" style="display:none;max-height:150px"></div>
     </div>
     <div id="cm-ai" style="display:none">
-      <div class="row g-2 mb-2">
-        <div class="col-8"><label class="form-label">Chủ đề / ý tưởng *</label><input type="text" id="m-aip" class="form-control" placeholder="VD: Cô gái học võ bảo vệ làng..." style="height:32px"></div>
-        <div class="col-4"><label class="form-label">Độ dài</label>
-          <select id="m-ail" class="form-select" style="height:32px;font-size:.77rem"><option value="500">~500 từ</option><option value="1000" selected>~1000 từ</option><option value="2000">~2000 từ</option><option value="5000">~5000 từ</option></select></div>
+      <!-- AI Model Selector -->
+      <div class="ai-model-bar mb-2">
+        <i class="bi bi-cpu me-1" style="color:var(--ac)"></i>
+        <span style="font-size:.68rem;font-weight:700;color:var(--tx2)">Model AI:</span>
+        <select id="m-aimodel" class="form-select ms-2" style="height:26px;font-size:.7rem;flex:1;max-width:220px" onchange="onAIModelChange(this.value)">
+          <option value="gemini-2.5-pro">✨ Gemini 2.5 Pro (Mạnh nhất)</option>
+          <option value="gemini-2.5-flash">⚡ Gemini 2.5 Flash (Nhanh + Tốt)</option>
+          <option value="gemini-2.0-flash">Gemini 2.0 Flash (Miễn phí)</option>
+          <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro</option>
+          <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash (Cơ bản)</option>
+        </select>
+        <span id="ai-model-note" style="font-size:.62rem;color:var(--am);margin-left:6px">Cần tài khoản Pro/Ultra</span>
       </div>
-      <button class="btn btn-primary w-100 mb-2" onclick="genAI()" id="btn-gai" style="font-size:.78rem"><i class="bi bi-stars me-1"></i>Tạo truyện với AI (Gemini)</button>
-      <div id="ai-st" style="font-size:.7rem;color:var(--tx2);margin-bottom:5px"></div>
-      <textarea id="m-air" class="form-control" rows="6" placeholder="Nội dung AI tạo ra sẽ hiển thị tại đây..." style="display:none"></textarea>
+
+      <!-- Row 1: Chủ đề + độ dài + số tập -->
+      <div class="row g-2 mb-2">
+        <div class="col-12"><label class="form-label">💡 Chủ đề / ý tưởng *</label>
+          <textarea id="m-aip" class="form-control" rows="2" placeholder="VD: Một chàng trai nhà nghèo được truyền công pháp bí ẩn, bắt đầu hành trình tu tiên báo thù cho gia tộc..."></textarea>
+        </div>
+      </div>
+      <div class="row g-2 mb-2">
+        <div class="col-4"><label class="form-label">👤 Nhân vật chính</label>
+          <input type="text" id="m-aichar" class="form-control" placeholder="VD: Lý Vũ, 18t, bướng bỉnh..." style="height:32px"></div>
+        <div class="col-4"><label class="form-label">🏞️ Bối cảnh</label>
+          <input type="text" id="m-aiset" class="form-control" placeholder="VD: Trung Quốc cổ đại, tu tiên..." style="height:32px"></div>
+        <div class="col-4"><label class="form-label">🎨 Phong cách viết</label>
+          <select id="m-aistyle" class="form-select" style="height:32px;font-size:.77rem">
+            <option value="">Tự nhiên</option>
+            <option value="dramatic">Kịch tính</option>
+            <option value="poetic">Thơ văn</option>
+            <option value="fast-paced">Nhịp nhanh</option>
+            <option value="detailed">Chi tiết</option>
+            <option value="classic">Cổ điển</option>
+          </select></div>
+      </div>
+      <div class="row g-2 mb-2">
+        <div class="col-4"><label class="form-label">📏 Từ / tập</label>
+          <select id="m-ail" class="form-select" style="height:32px;font-size:.77rem">
+            <option value="500">~500 từ</option>
+            <option value="1000" selected>~1.000 từ</option>
+            <option value="2000">~2.000 từ</option>
+            <option value="3000">~3.000 từ</option>
+            <option value="5000">~5.000 từ</option>
+            <option value="8000">~8.000 từ</option>
+          </select></div>
+        <div class="col-4"><label class="form-label">📚 Số tập</label>
+          <select id="m-aitaps" class="form-select" style="height:32px;font-size:.77rem">
+            <option value="1" selected>1 tập (hoàn chỉnh)</option>
+            <option value="3">3 tập</option>
+            <option value="5">5 tập</option>
+            <option value="10">10 tập</option>
+            <option value="20">20 tập</option>
+          </select></div>
+        <div class="col-4 d-flex align-items-end">
+          <div id="ai-tap-badge" style="font-size:.68rem;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.25);border-radius:6px;padding:5px 9px;color:var(--ac2);display:none;width:100%;text-align:center">
+            Tập <b id="ai-cur-tap">1</b> / <b id="ai-tot-tap">1</b>
+          </div>
+        </div>
+      </div>
+
+      <!-- Nút tạo -->
+      <div class="d-flex gap-2 mb-2">
+        <button class="btn btn-primary flex-1" onclick="genAI()" id="btn-gai" style="font-size:.78rem;flex:1"><i class="bi bi-stars me-1"></i>Tạo tập <span id="btn-gai-label">1</span></button>
+        <button class="btn btn-em" onclick="genAINext()" id="btn-gainext" style="font-size:.78rem;display:none;white-space:nowrap"><i class="bi bi-arrow-right-circle me-1"></i>Tạo tập tiếp</button>
+        <button class="btn btn-g" onclick="resetAIGen()" id="btn-aireset" style="font-size:.78rem;display:none" title="Tạo lại từ đầu"><i class="bi bi-arrow-counterclockwise"></i></button>
+      </div>
+
+      <!-- Status + Progress -->
+      <div id="ai-st" style="font-size:.7rem;color:var(--tx2);margin-bottom:5px;min-height:18px"></div>
+      <div id="ai-chapters-list" style="display:none;margin-bottom:8px">
+        <div style="font-size:.68rem;color:var(--tx2);margin-bottom:4px;font-weight:600">📖 Các tập đã tạo:</div>
+        <div id="ai-chaps-tabs" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+      </div>
+      <textarea id="m-air" class="form-control" rows="7" placeholder="Nội dung AI tạo ra sẽ hiển thị tại đây..." style="display:none"></textarea>
+      <div id="ai-words-info" style="display:none;font-size:.66rem;color:var(--tx2);margin-top:4px;text-align:right"></div>
     </div>
     <hr class="d my-3">
     <div class="row g-2">
@@ -638,14 +749,71 @@ async function reloadEps(){
     renderEpL(r.episodes||[]);
   }
 }
+function toggleAIAppend(){
+  const panel=document.getElementById('ai-append-panel');
+  const btn=document.getElementById('btn-ai-append');
+  const isOpen=panel.style.display!=='none';
+  panel.style.display=isOpen?'none':'block';
+  if(btn)btn.style.background=isOpen?'':'rgba(99,102,241,.12)';
+  if(!isOpen){
+    document.getElementById('ap-prompt').value='';
+    document.getElementById('ap-st').textContent='';
+    document.getElementById('ap-st').style.color='var(--tx2)';
+  }
+}
+async function appendAIChapter(){
+  if(!selStoryId||!selStoryData){toast('Chưa chọn truyện!','warn');return;}
+  const model=document.getElementById('ap-model').value;
+  const extraPrompt=document.getElementById('ap-prompt').value.trim();
+  const targetWords=parseInt(document.getElementById('ap-words').value)||1000;
+  const btn=document.getElementById('btn-append-ai');
+  const st=document.getElementById('ap-st');
+
+  // Lấy ~600 từ cuối cùng làm context
+  const existingContent=selStoryData.content||'';
+  const lastWords=existingContent.split(/\s+/).slice(-600).join(' ');
+  const currentEpCount=selStoryData.episodes?.length||1;
+  const storyTitle=selStoryData.title||'';
+  const genre=selStoryData.genre||'';
+
+  const continuePrompt=`${extraPrompt?extraPrompt+'. ':''}Viết tiếp câu chuyện "${storyTitle}" từ chỗ đã dừng. Đây là tập ${currentEpCount+1}.`;
+
+  btn.disabled=true;
+  btn.innerHTML=`<i class="bi bi-stars spin me-1"></i>AI đang viết...`;
+  st.innerHTML=`<i class="bi bi-hourglass-split me-1"></i>Đang gọi ${model}...`;
+  st.style.color='var(--tx2)';
+  try{
+    const r=await AP('/api/stories/'+selStoryId+'/ai-append',{
+      model,targetWords,genre,
+      extraPrompt: continuePrompt,
+      lastContext: lastWords,
+      chapterNum: currentEpCount+1,
+    });
+    if(r.success){
+      st.innerHTML=`✅ Đã ghép <b>${r.addedWords?.toLocaleString()||'?'}</b> từ mới — Tổng: <b>${r.totalWords?.toLocaleString()||'?'}</b> từ`;
+      st.style.color='#34d399';
+      toast(`✅ Viết tiếp xong! +${r.addedWords||'?'} từ`,'success');
+      // Reload story detail
+      await selStory(selStoryId);
+    }else{
+      st.textContent='❌ '+(r.error||'Lỗi AI');st.style.color='#f87171';
+    }
+  }catch(e){
+    st.textContent='❌ '+e.message;st.style.color='#f87171';
+  }
+  btn.disabled=false;
+  btn.innerHTML=`<i class="bi bi-stars me-1"></i>Viết & Ghép vào truyện`;
+}
 function openAddModal(){
   editingId=null;
   document.getElementById('m-hd').innerHTML=`<i class="bi bi-plus-circle me-2" style="color:var(--ac)"></i>Thêm truyện mới`;
-  ['m-tit','m-content','m-desc','m-url','m-aip'].forEach(id=>document.getElementById(id).value='');
+  ['m-tit','m-content','m-desc','m-url','m-aip','m-aichar','m-aiset'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('m-gen').value='';document.getElementById('m-wpe').value=10000;
+  document.getElementById('m-aistyle').value='';
   document.getElementById('m-air').style.display='none';
   document.getElementById('ai-st').textContent='';document.getElementById('url-st').textContent='';
   document.getElementById('url-pv').style.display='none';
+  if(typeof resetAIGen==='function')resetAIGen();
   setCM('paste');bsMod=bsMod||new bootstrap.Modal(document.getElementById('storyModal'));bsMod.show();
 }
 function editSelStory(){
@@ -680,21 +848,173 @@ async function fetchURL(){
   }catch{st.textContent='❌ Lỗi kết nối';st.style.color='#f87171';}
   btn.disabled=false;btn.innerHTML=`<i class="bi bi-download me-1"></i>Lấy`;
 }
-async function genAI(){
-  const prompt=document.getElementById('m-aip').value.trim(),length=document.getElementById('m-ail').value;
-  if(!prompt){toast('Nhập chủ đề trước!','warn');return;}
-  const btn=document.getElementById('btn-gai'),st=document.getElementById('ai-st'),res=document.getElementById('m-air');
-  btn.disabled=true;btn.innerHTML=`<i class="bi bi-stars spin me-1"></i>AI đang viết...`;st.textContent='Đang gọi Gemini API...';st.style.color='var(--tx2)';
-  try{
-    const r=await AP('/api/ai-story',{prompt,targetWords:parseInt(length)});
-    if(r.success&&r.content){
-      res.style.display='block';res.value=r.content;document.getElementById('m-content').value=r.content;
-      if(r.title)document.getElementById('m-tit').value=r.title;
-      st.textContent=`✅ AI tạo ${r.content.split(/\s+/).length.toLocaleString()} từ`;st.style.color='#34d399';
-    }else{st.textContent='❌ '+(r.error||'Lỗi AI');st.style.color='#f87171';}
-  }catch(e){st.textContent='❌ '+e.message;st.style.color='#f87171';}
-  btn.disabled=false;btn.innerHTML=`<i class="bi bi-stars me-1"></i>Tạo truyện với AI (Gemini)`;
+// ── AI STORY STATE ────────────────────────────────────────────
+let aiState = { currentChap: 0, totalChaps: 1, chapters: [], summaries: [] };
+
+const AI_MODEL_NOTES = {
+  'gemini-2.5-pro':          '✨ Mạnh nhất — Cần tài khoản Pro/Ultra',
+  'gemini-2.5-flash':        '⚡ Nhanh + chất lượng cao',
+  'gemini-2.0-flash':        '✓ Miễn phí, ổn định',
+  'gemini-1.5-pro-latest':   'Pro, phù hợp nội dung dài',
+  'gemini-1.5-flash-latest': '✓ Miễn phí cơ bản',
+};
+function onAIModelChange(val){
+  const el=document.getElementById('ai-model-note');
+  if(el)el.textContent=AI_MODEL_NOTES[val]||'';
 }
+
+function resetAIGen(){
+  aiState={currentChap:0,totalChaps:1,chapters:[],summaries:[]};
+  document.getElementById('m-air').style.display='none';
+  document.getElementById('m-air').value='';
+  document.getElementById('ai-st').textContent='';
+  document.getElementById('ai-st').style.color='var(--tx2)';
+  document.getElementById('ai-chapters-list').style.display='none';
+  document.getElementById('ai-chaps-tabs').innerHTML='';
+  document.getElementById('ai-tap-badge').style.display='none';
+  document.getElementById('btn-gainext').style.display='none';
+  document.getElementById('btn-aireset').style.display='none';
+  document.getElementById('btn-gai-label').textContent='1';
+  document.getElementById('btn-gai').disabled=false;
+}
+
+function getAIParams(){
+  return {
+    prompt:      document.getElementById('m-aip').value.trim(),
+    targetWords: parseInt(document.getElementById('m-ail').value)||1000,
+    genre:       document.getElementById('m-gen').value,
+    style:       document.getElementById('m-aistyle').value,
+    characters:  document.getElementById('m-aichar').value.trim(),
+    setting:     document.getElementById('m-aiset').value.trim(),
+    totalChapters: parseInt(document.getElementById('m-aitaps').value)||1,
+    model:       document.getElementById('m-aimodel').value,
+  };
+}
+
+function updateAIChapTabs(){
+  const tabs=document.getElementById('ai-chaps-tabs');
+  const list=document.getElementById('ai-chapters-list');
+  if(aiState.chapters.length===0){list.style.display='none';return;}
+  list.style.display='block';
+  tabs.innerHTML=aiState.chapters.map((ch,i)=>`
+    <button class="ai-chap-tab ${i===aiState.chapters.length-1?'active':''}" onclick="showAIChap(${i})">
+      Tập ${i+1}${ch.title?' — '+ch.title.substring(0,15):''}
+    </button>`).join('');
+}
+
+function showAIChap(idx){
+  if(!aiState.chapters[idx])return;
+  document.getElementById('m-air').value=aiState.chapters[idx].content;
+  document.querySelectorAll('.ai-chap-tab').forEach((t,i)=>t.classList.toggle('active',i===idx));
+}
+
+async function _doGenAI(chapNum){
+  const p=getAIParams();
+  if(!p.prompt){toast('Nhập chủ đề trước!','warn');return false;}
+  const btn=document.getElementById('btn-gai'),btnNext=document.getElementById('btn-gainext');
+  const st=document.getElementById('ai-st'),res=document.getElementById('m-air');
+  const modelLabel=document.getElementById('m-aimodel').options[document.getElementById('m-aimodel').selectedIndex]?.text||'AI';
+
+  btn.disabled=true;if(btnNext)btnNext.disabled=true;
+  btn.innerHTML=`<i class="bi bi-stars spin me-1"></i>AI đang viết tập ${chapNum}...`;
+  st.innerHTML=`<i class="bi bi-hourglass-split me-1"></i>Đang gọi <b>${modelLabel}</b> — tập ${chapNum}/${p.totalChapters}...`;
+  st.style.color='var(--tx2)';
+
+  // Badge progress
+  const badge=document.getElementById('ai-tap-badge');
+  badge.style.display='block';
+  document.getElementById('ai-cur-tap').textContent=chapNum;
+  document.getElementById('ai-tot-tap').textContent=p.totalChapters;
+
+  try{
+    const previousSummary = aiState.summaries.join('\n\n---\n\n') || null;
+    const r=await AP('/api/ai-story',{
+      prompt: p.prompt,
+      targetWords: p.targetWords,
+      genre: p.genre,
+      style: p.style,
+      characters: p.characters,
+      setting: p.setting,
+      totalChapters: p.totalChapters,
+      chapterNum: chapNum,
+      previousSummary,
+      model: p.model,
+    });
+    if(r.success&&r.content){
+      // Lưu chapter
+      aiState.chapters.push({title:r.title||'', content:r.content});
+      aiState.currentChap=chapNum;
+
+      // Hiển thị
+      res.style.display='block';
+      res.value=r.content;
+      const wc=r.wordCount||r.content.split(/\s+/).filter(Boolean).length;
+      st.innerHTML=`✅ Tập ${chapNum} xong — <b>${wc.toLocaleString()}</b> từ`;
+      st.style.color='#34d399';
+      const wi=document.getElementById('ai-words-info');
+      wi.style.display='block';
+      const total=aiState.chapters.reduce((s,c)=>s+c.content.split(/\s+/).filter(Boolean).length,0);
+      wi.textContent=`Tổng ${aiState.chapters.length} tập: ${total.toLocaleString()} từ`;
+
+      // Đặt title từ tập đầu
+      if(chapNum===1&&r.title)document.getElementById('m-tit').value=r.title;
+
+      // Ghép toàn bộ content → m-content (để save)
+      document.getElementById('m-content').value=aiState.chapters.map(c=>c.content).join('\n\n========== Tập tiếp theo ==========\n\n');
+
+      // Tabs
+      updateAIChapTabs();
+
+      // Tạo summary cho tập này (async, không block)
+      AP('/api/ai-story/summarize',{content:r.content,title:r.title||''})
+        .then(s=>{ if(s.success&&s.summary) aiState.summaries.push(`[Tập ${chapNum}]: ${s.summary}`); })
+        .catch(()=>{});
+
+      // Hiện nút tiếp nếu còn tập
+      if(chapNum<p.totalChapters){
+        btnNext.style.display='';
+        btnNext.disabled=false;
+        document.getElementById('btn-aireset').style.display='';
+        document.getElementById('btn-gai-label').textContent=chapNum+1;
+        btn.innerHTML=`<i class="bi bi-stars me-1"></i>Tạo tập ${chapNum+1}`;
+      } else {
+        btn.innerHTML=`<i class="bi bi-check-circle me-1"></i>Hoàn thành ${p.totalChapters} tập!`;
+        btn.disabled=true;
+        btnNext.style.display='none';
+        document.getElementById('btn-aireset').style.display='';
+        toast(`✅ Đã tạo xong ${p.totalChapters} tập!`,'success');
+      }
+      return true;
+    } else {
+      st.textContent='❌ '+(r.error||'Lỗi AI');st.style.color='#f87171';
+      btn.disabled=false;if(btnNext)btnNext.disabled=false;
+      btn.innerHTML=`<i class="bi bi-stars me-1"></i>Thử lại`;
+      return false;
+    }
+  }catch(e){
+    st.textContent='❌ '+e.message;st.style.color='#f87171';
+    btn.disabled=false;if(btnNext)btnNext.disabled=false;
+    btn.innerHTML=`<i class="bi bi-stars me-1"></i>Thử lại`;
+    return false;
+  }
+}
+
+async function genAI(){
+  const p=getAIParams();
+  if(!p.prompt){toast('Nhập chủ đề trước!','warn');return;}
+  // Reset nếu bắt đầu mới
+  if(aiState.currentChap===0){
+    aiState={currentChap:0,totalChaps:p.totalChapters,chapters:[],summaries:[]};
+  }
+  await _doGenAI(aiState.currentChap+1);
+}
+
+async function genAINext(){
+  const p=getAIParams();
+  if(aiState.currentChap>=p.totalChapters){toast('Đã tạo hết tập rồi!','warn');return;}
+  await _doGenAI(aiState.currentChap+1);
+}
+
 async function saveStory(){
   const title=document.getElementById('m-tit').value.trim();
   const genre=document.getElementById('m-gen').value;
@@ -805,27 +1125,109 @@ function selEng(eng){
   document.getElementById('et-panel').style.display=eng==='edgetts'?'flex':'none';
   document.getElementById('zt-panel').style.display=eng==='zerotts'?'flex':'none';
   if(eng==='zerotts'){
-    checkZT();
+    startAndWaitZT();
     if(ztVoicesList.length){
       const cur=document.getElementById('zt-voice')?.value||'maichi';
       updateVoicePickerUI(ztVoicesList,cur);
     }
   }else{
+    // Reset màu nút ZeroTTS về mặc định khi chuyển sang EdgeTTS
+    const ztBtn=document.getElementById('eng-zt');
+    ztBtn.style.background='';
+    ztBtn.style.borderColor='';
+    ztBtn.title='';
     const cur=document.getElementById('et-voice')?.value||'vi-VN-HoaiMyNeural';
     updateVoicePickerUI(edgeVoicesList,cur);
   }
 }
 
+// Khởi động ZeroTTS qua server Node rồi polling cho đến khi online
+async function startAndWaitZT(){
+  const ztBtn=document.getElementById('eng-zt');
+  const dot=document.getElementById('zt-dot'),txt=document.getElementById('zt-stxt');
+
+  // Reset trạng thái UI
+  ztBtn.style.background='';
+  ztBtn.style.borderColor='';
+  dot.classList.remove('ok');
+  txt.textContent='⏳ Đang khởi động ZeroTTS...';
+  ztBtn.title='Đang khởi động...';
+
+  try{
+    // Gọi API start ZeroTTS qua server Node.js
+    const r=await fetch('/api/zerotts/start',{method:'POST'});
+    const d=await r.json();
+    if(!d.success){txt.textContent='❌ Lỗi khởi động: '+(d.error||'unknown');return;}
+    if(d.status==='already_running'){
+      // Đã online sẵn
+      dot.classList.add('ok');
+      txt.textContent='✅ ZeroTTS online';
+      ztBtn.style.background='linear-gradient(135deg,#16a34a,#15803d)';
+      ztBtn.style.borderColor='#22c55e';
+      ztBtn.title='ZeroTTS đang chạy ✅';
+      loadZTVoices();
+      return;
+    }
+  }catch(e){
+    txt.textContent='❌ Không gọi được server: '+e.message;
+    return;
+  }
+
+  // Polling: chờ ZeroTTS khởi động xong (tối đa 120s)
+  txt.textContent='⏳ Chờ ZeroTTS online...';
+  let tries=0;
+  const MAX=40; // 40 × 3s = 120s
+  const poll=setInterval(async()=>{
+    tries++;
+    try{
+      const sr=await fetch('/api/zerotts/status');
+      const sd=await sr.json();
+      if(sd.online){
+        clearInterval(poll);
+        dot.classList.add('ok');
+        txt.textContent='✅ ZeroTTS online';
+        // Đổi màu background nút ZeroTTS thành xanh lá
+        ztBtn.style.background='linear-gradient(135deg,#16a34a,#15803d)';
+        ztBtn.style.borderColor='#22c55e';
+        ztBtn.title='ZeroTTS đang chạy ✅';
+        loadZTVoices();
+      } else if(tries>=MAX){
+        clearInterval(poll);
+        dot.classList.remove('ok');
+        txt.textContent='❌ Timeout — ZeroTTS chưa phản hồi sau 120s';
+      } else {
+        txt.textContent=`⏳ Chờ ZeroTTS online... (${tries*3}s)`;
+      }
+    }catch{
+      if(tries>=MAX){
+        clearInterval(poll);
+        txt.textContent='❌ Mất kết nối server';
+      }
+    }
+  },3000);
+}
+
 async function checkZT(){
   const url=document.getElementById('zt-url').value.trim();
   const dot=document.getElementById('zt-dot'),txt=document.getElementById('zt-stxt');
+  const ztBtn=document.getElementById('eng-zt');
   dot.classList.remove('ok');txt.textContent='Đang kiểm tra...';
   try{
     const r=await fetch(url+'/api/tts-status',{signal:AbortSignal.timeout(3000)});
     const d=await r.json();
-    if(d.ok||d.status==='ok'){dot.classList.add('ok');txt.textContent='✅ ZeroTTS online';loadZTVoices();}
-    else throw new Error();
-  }catch{dot.classList.remove('ok');txt.textContent='❌ Không kết nối — chạy ZeroTTS trước';}
+    if(d.ok||d.status==='ok'){
+      dot.classList.add('ok');txt.textContent='✅ ZeroTTS online';
+      ztBtn.style.background='linear-gradient(135deg,#16a34a,#15803d)';
+      ztBtn.style.borderColor='#22c55e';
+      ztBtn.title='ZeroTTS đang chạy ✅';
+      loadZTVoices();
+    }else throw new Error();
+  }catch{
+    dot.classList.remove('ok');txt.textContent='❌ Không kết nối — chạy ZeroTTS trước';
+    ztBtn.style.background='';
+    ztBtn.style.borderColor='';
+    ztBtn.title='';
+  }
 }
 
 async function loadZTVoices(){

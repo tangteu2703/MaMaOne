@@ -546,45 +546,168 @@ app.post('/api/fetch-url', async (req, res) => {
   }
 });
 
-// POST /api/ai-story — Tạo truyện bằng Gemini AI
+// Danh sách model Gemini hỗ trợ
+const GEMINI_MODELS = [
+  { id: 'gemini-2.5-pro',           label: 'Gemini 2.5 Pro ✨',       note: 'Mạnh nhất — Cần Pro/Ultra' },
+  { id: 'gemini-2.5-flash',         label: 'Gemini 2.5 Flash ⚡',     note: 'Nhanh + chất lượng cao' },
+  { id: 'gemini-2.0-flash',         label: 'Gemini 2.0 Flash',         note: 'Miễn phí, ổn định' },
+  { id: 'gemini-1.5-pro-latest',    label: 'Gemini 1.5 Pro',           note: 'Pro, dài hơi tốt' },
+  { id: 'gemini-1.5-flash-latest',  label: 'Gemini 1.5 Flash',         note: 'Miễn phí cơ bản' },
+];
+
+// GET /api/ai-models — Danh sách model Gemini
+app.get('/api/ai-models', (req, res) => {
+  res.json({ success: true, models: GEMINI_MODELS });
+});
+
+// Helper: Gọi Gemini API với prompt
+async function callGeminiAPI(apiKey, systemPrompt, targetWords = 1000, temperature = 0.92, model = 'gemini-2.5-pro') {
+  const https = require('https');
+  const maxTokens = Math.min(Math.round(targetWords * 3.5), 65536);
+  const payload = JSON.stringify({
+    contents: [{ parts: [{ text: systemPrompt }] }],
+    generationConfig: {
+      maxOutputTokens: maxTokens,
+      temperature,
+      topP: 0.95,
+      topK: 64,
+    },
+  });
+  const body = await new Promise((resolve, reject) => {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const r = new URL(url);
+    const req2 = https.request({
+      hostname: r.hostname, path: r.pathname + r.search, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+    }, (res2) => {
+      let data = ''; res2.on('data', c => data += c); res2.on('end', () => resolve(data));
+    });
+    req2.on('error', reject);
+    req2.setTimeout(60000, () => { req2.destroy(); reject(new Error('Gemini API Timeout sau 60s')); });
+    req2.write(payload); req2.end();
+  });
+  const parsed = JSON.parse(body);
+  if (parsed.error) throw new Error(parsed.error.message || 'Gemini API Error');
+  return parsed.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+// Helper: Xây dựng system prompt theo thể loại & phong cách
+function buildStoryPrompt({ prompt, genre, targetWords, style, characters, setting, chapterNum, totalChapters, previousSummary }) {
+  const genreGuide = {
+    'Ngôn tình': 'Tập trung vào cảm xúc lãng mạn, tình yêu ngọt ngào và những khoảnh khắc đánh tim người đọc. Miêu tả nội tâm nhân vật sâu sắc.',
+    'Kiếm hiệp': 'Thế giới võ lâm với các môn phái, chiêu thức võ công độc đáo. Có hành động gay cấn, ân nghĩa giang hồ, anh hùng hào kiệt.',
+    'Tiên hiệp': 'Tu luyện thành tiên, đột phá cảnh giới, thu thập linh vật. Xây dựng thế giới tu tiên hùng vĩ với pháp thuật và thần thú.',
+    'Trinh thám': 'Bí ẩn cần được giải mã, manh mối ẩn giấu, tình tiết twist bất ngờ. Nhân vật thám tử thông minh, suy luận logic chặt chẽ.',
+    'Kinh dị': 'Không khí rùng rợn, yếu tố siêu nhiên đáng sợ. Xây dựng tension từng chương, cảm giác hãi hùng và bất an liên tục.',
+    'Hài hước': 'Tình huống dở khóc dở cười, nhân vật ngốc nghếch đáng yêu, thoại hài hước tự nhiên. Không khí nhẹ nhàng, vui tươi.',
+    'Lịch sử': 'Bối cảnh lịch sử Việt Nam hoặc Đông Á chân thực. Nhân vật có chiều sâu lịch sử, sự kiện đan xen lịch sử thực tế.',
+    '': 'Viết theo phong cách tự nhiên, cân bằng giữa hành động và cảm xúc.',
+  };
+  const styleGuide = {
+    'dramatic': 'Văn phong kịch tính, cao trào liên tục, câu văn ngắn gọn, mạnh mẽ.',
+    'poetic': 'Văn phong thơ văn, giàu hình ảnh, ẩn dụ đẹp, cảm xúc tinh tế.',
+    'fast-paced': 'Nhịp độ nhanh, hành động liên tục, đối thoại súc tích, không dài dòng.',
+    'detailed': 'Miêu tả chi tiết tỉ mỉ, khắc họa bối cảnh và nội tâm sâu sắc.',
+    'classic': 'Văn phong cổ điển, trang trọng, ngôn từ tinh tế, phong cách truyện truyền thống.',
+    '': 'Văn phong tự nhiên, cân bằng.',
+  };
+
+  const chapterInfo = (totalChapters > 1)
+    ? `\n📖 ĐÂY LÀ TẬP ${chapterNum}/${totalChapters} của bộ truyện.`
+    : '';
+
+  const prevContext = previousSummary
+    ? `\n\n📌 TÓM TẮT CÁC TẬP TRƯỚC (để đảm bảo tính liên tục):\n${previousSummary}\n\nHãy tiếp tục câu chuyện một cách tự nhiên từ đây.`
+    : '';
+
+  const charInfo = characters ? `\n👤 NHÂN VẬT CHÍNH: ${characters}` : '';
+  const settingInfo = setting ? `\n🏞️ BỐI CẢNH: ${setting}` : '';
+
+  const isFirstChapter = !previousSummary;
+  const titleLine = isFirstChapter
+    ? `Dòng đầu tiên PHẢI là: TIÊU ĐỀ: [tên truyện hấp dẫn]\n`
+    : `Dòng đầu tiên PHẢI là: TẬP ${chapterNum}: [tiêu đề tập này]\n`;
+
+  return `Bạn là một nhà văn Việt Nam tài năng, chuyên viết truyện ${genre || 'hấp dẫn'}.
+
+${genreGuide[genre] || genreGuide['']}
+${styleGuide[style] || styleGuide['']}
+${chapterInfo}${charInfo}${settingInfo}${prevContext}
+
+📝 YÊU CẦU:
+- Viết khoảng ${targetWords} từ (quan trọng: phải đủ độ dài)
+- ${titleLine}- Nội dung phải HOÀN CHỈNH, có mở đầu - diễn biến - kết thúc (hoặc cliffhanger nếu có tập sau)
+- Không thêm ghi chú, giải thích ngoài truyện
+- Văn phong tiếng Việt tự nhiên, cuốn hút${totalChapters > 1 && chapterNum < totalChapters ? '\n- Kết tập bằng một tình huống hấp dẫn (cliffhanger) để người đọc muốn đọc tiếp' : ''}
+
+💡 Ý TƯỞNG / CHỦ ĐỀ: ${prompt}
+
+Bắt đầu viết ngay:`;
+}
+
+// POST /api/ai-story — Tạo truyện/tập mới bằng Gemini AI (nâng cấp)
 app.post('/api/ai-story', async (req, res) => {
   try {
-    const { prompt, targetWords } = req.body;
-    if (!prompt) return res.status(400).json({ success: false, error: 'Thiếu prompt' });
+    const { prompt, targetWords, genre, style, characters, setting, totalChapters, chapterNum, previousSummary, model } = req.body;
+    if (!prompt) return res.status(400).json({ success: false, error: 'Thiếu prompt/chủ đề truyện' });
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return res.status(400).json({ success: false, error: 'Chưa cấu hình GEMINI_API_KEY trong .env' });
-    const words = parseInt(targetWords) || 1000;
-    const systemPrompt = `Bạn là một nhà văn chuyên viết truyện ngắn tiếng Việt hấp dẫn. Hãy viết một câu chuyện hoàn chỉnh dựa trên ý tưởng sau, với khoảng ${words} từ. Chỉ trả về nội dung câu chuyện, không thêm giải thích hay tiêu đề ngoài. Tên truyện đặt ở dòng đầu tiên theo dạng: TIÊU ĐỀ: [tên truyện]\n\nÝ tưởng: ${prompt}`;
-    const https = require('https');
-    const payload = JSON.stringify({
-      contents: [{ parts: [{ text: systemPrompt }] }],
-      generationConfig: { maxOutputTokens: Math.round(words * 3), temperature: 0.9 },
+
+    const words = Math.min(parseInt(targetWords) || 1000, 8000);
+    const chapNum = parseInt(chapterNum) || 1;
+    const totalChaps = parseInt(totalChapters) || 1;
+    const selectedModel = model || 'gemini-2.5-pro';
+
+    const systemPrompt = buildStoryPrompt({
+      prompt, genre: genre || '', targetWords: words, style: style || '',
+      characters: characters || '', setting: setting || '',
+      chapterNum: chapNum, totalChapters: totalChaps,
+      previousSummary: previousSummary || null,
     });
-    const geminiRes = await new Promise((resolve, reject) => {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
-      const r = new URL(url);
-      const req2 = https.request({
-        hostname: r.hostname, path: r.pathname + r.search, method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-      }, (res2) => {
-        let body = ''; res2.on('data', c => body += c); res2.on('end', () => resolve(body));
-      });
-      req2.on('error', reject);
-      req2.setTimeout(30000, () => { req2.destroy(); reject(new Error('Timeout')); });
-      req2.write(payload); req2.end();
-    });
-    const parsed = JSON.parse(geminiRes);
-    if (parsed.error) return res.status(400).json({ success: false, error: parsed.error.message });
-    const rawText = parsed.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    // Extract title from first line if present
+
+    logger.info('Studio', `AI Story: Tập ${chapNum}/${totalChaps} | "${prompt.substring(0,40)}..." | ${words} từ | ${genre||'auto'} | Model: ${selectedModel}`);
+    const rawText = await callGeminiAPI(apiKey, systemPrompt, words, 0.92, selectedModel);
+    if (!rawText) return res.status(500).json({ success: false, error: 'Gemini không trả về nội dung' });
+
+    // Tách tiêu đề từ dòng đầu
     const lines = rawText.split('\n');
     let title = '';
     let content = rawText;
-    if (lines[0] && lines[0].startsWith('TIÊU ĐỀ:')) {
-      title = lines[0].replace('TIÊU ĐỀ:', '').trim();
+    const firstLine = lines[0] || '';
+    if (firstLine.startsWith('TIÊU ĐỀ:')) {
+      title = firstLine.replace('TIÊU ĐỀ:', '').trim();
+      content = lines.slice(1).join('\n').trim();
+    } else if (firstLine.match(/^TẬP \d+:/i)) {
+      title = firstLine.replace(/^TẬP \d+:/i, '').trim();
       content = lines.slice(1).join('\n').trim();
     }
-    res.json({ success: true, content, title });
+
+    const wordCount = content.split(/\s+/).filter(Boolean).length;
+    logger.success('Studio', `AI Story: Tạo xong tập ${chapNum} — ${wordCount} từ`);
+    res.json({ success: true, content, title, wordCount, chapterNum: chapNum });
+  } catch (err) {
+    logger.error('Studio', `AI Story Error: ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/ai-story/continue — Tạo tóm tắt bối cảnh cho tập tiếp theo
+app.post('/api/ai-story/summarize', async (req, res) => {
+  try {
+    const { content, title } = req.body;
+    if (!content) return res.status(400).json({ success: false, error: 'Thiếu nội dung' });
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(400).json({ success: false, error: 'Chưa cấu hình GEMINI_API_KEY' });
+
+    const summaryPrompt = `Hãy tóm tắt ngắn gọn nội dung chính của tập truyện sau trong 150-200 từ. 
+Tập trung vào: nhân vật chính, sự kiện quan trọng, trạng thái hiện tại của nhân vật, và điểm dừng câu chuyện.
+Chỉ trả về bản tóm tắt, không thêm tiêu đề hay giải thích.
+
+Nội dung tập truyện:
+${content.substring(0, 3000)}`;
+
+    const summary = await callGeminiAPI(apiKey, summaryPrompt, 200, 0.5);
+    res.json({ success: true, summary: summary.trim() });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -632,6 +755,70 @@ app.delete('/api/stories/:id', (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// POST /api/stories/:id/ai-append — Dùng AI viết tiếp & ghép vào file truyện đã có
+app.post('/api/stories/:id/ai-append', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { model, targetWords, genre, extraPrompt, lastContext, chapterNum } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(400).json({ success: false, error: 'Chưa cấu hình GEMINI_API_KEY' });
+
+    const txtFile = path.join(STORIES_DIR, `${id}.txt`);
+    const metaFile = path.join(STORIES_DIR, `${id}.json`);
+    if (!fs.existsSync(txtFile)) return res.status(404).json({ success: false, error: 'Không tìm thấy truyện' });
+
+    const existingContent = fs.readFileSync(txtFile, 'utf8');
+    const meta = fs.existsSync(metaFile) ? JSON.parse(fs.readFileSync(metaFile, 'utf8')) : {};
+    const storyTitle = meta.originalTitle || meta.title || id;
+    const words = Math.min(parseInt(targetWords) || 1000, 8000);
+    const chapNum = parseInt(chapterNum) || 2;
+    const selectedModel = model || 'gemini-2.5-pro';
+
+    // Lấy 800 từ cuối làm context (ưu tiên lastContext từ client)
+    const contextText = lastContext || existingContent.split(/\s+/).slice(-800).join(' ');
+
+    const continuePromptText = `${extraPrompt || `Viết tiếp câu chuyện "${storyTitle}" từ chỗ đã dừng. Đây là phần ${chapNum}.`}`;
+
+    const systemPrompt = `Bạn là một nhà văn Việt Nam tài năng.
+${genre ? `Thể loại: ${genre}.` : ''}
+
+📌 NỘI DUNG CUỐI CÙA TRUYỆN (để đảm bảo tính liên tục):
+"${contextText}"
+
+📝 YÊU CẦU:
+- Viết khoảng ${words} từ tiếp theo
+- Dòng đầu tiên PHẢI là: PHẦN ${chapNum}: [tiêu đề đoạn này]
+- Tiếp nối tự nhiên từ nội dung đã có, không tóm tắt lại
+- Kết bằng cliffhanger để người đọc muốn đọc tiếp
+- Không thêm ghi chú hay giải thích ngoài truyện
+- Văn phong tiếng Việt tự nhiên, cuốn hút
+
+💡 ${continuePromptText}
+
+Bắt đầu viết ngay:`;
+
+    logger.info('Studio', `AI Append: "${storyTitle}" phần ${chapNum} | ${words} từ | ${selectedModel}`);
+    const rawText = await callGeminiAPI(apiKey, systemPrompt, words, 0.92, selectedModel);
+    if (!rawText) return res.status(500).json({ success: false, error: 'Gemini không trả về nội dung' });
+
+    // Thêm separator + nội dung mới vào file
+    const separator = `\n\n${'═'.repeat(50)}\n\n`;
+    const appendContent = separator + rawText.trim();
+    fs.appendFileSync(txtFile, appendContent, 'utf8');
+
+    const newTotalContent = existingContent + appendContent;
+    const addedWords = rawText.split(/\s+/).filter(Boolean).length;
+    const totalWords = newTotalContent.split(/\s+/).filter(Boolean).length;
+
+    logger.success('Studio', `AI Append xong: +${addedWords} từ → tổng ${totalWords} từ`);
+    res.json({ success: true, addedWords, totalWords, chapterNum: chapNum });
+  } catch (err) {
+    logger.error('Studio', `AI Append Error: ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 
 // Trạng thái render audio đang chạy
 const audioRenderJobs = {};
@@ -1019,6 +1206,72 @@ app.post('/api/upload-music', express.raw({ type: ['audio/*'], limit: '100mb' })
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// ─── ZeroTTS Process Manager ─────────────────────────────────────────────────
+const { spawn } = require('child_process');
+const ZEROTTS_DIR = path.join(__dirname, '..', 'ZeroTTS');
+const ZEROTTS_PORT = 7860;
+let zerottsProcess = null;
+let zerottsPid = null;
+
+// POST /api/zerotts/start — Khởi động ZeroTTS song song
+app.post('/api/zerotts/start', async (req, res) => {
+  // Kiểm tra nếu đã online rồi thì không cần start lại
+  try {
+    const check = await axios.get(`http://localhost:${ZEROTTS_PORT}/api/tts-status`, { timeout: 2000 });
+    if (check.data?.ok || check.data?.status === 'ok') {
+      return res.json({ success: true, status: 'already_running', message: 'ZeroTTS đã online rồi!' });
+    }
+  } catch {/* chưa online — tiếp tục start */}
+
+  // Nếu process cũ còn đó thì kill trước
+  if (zerottsProcess && !zerottsProcess.killed) {
+    try { zerottsProcess.kill('SIGTERM'); } catch {}
+    zerottsProcess = null;
+  }
+
+  try {
+    logger.info('ZeroTTS', `Khởi động ZeroTTS từ: ${ZEROTTS_DIR}`);
+    zerottsProcess = spawn('cmd.exe', ['/c', 'run.bat'], {
+      cwd: ZEROTTS_DIR,
+      detached: false,
+      windowsHide: false,
+    });
+    zerottsPid = zerottsProcess.pid;
+
+    zerottsProcess.stdout?.on('data', (d) => {
+      logger.info('ZeroTTS', d.toString().trim());
+    });
+    zerottsProcess.stderr?.on('data', (d) => {
+      logger.warn('ZeroTTS', d.toString().trim());
+    });
+    zerottsProcess.on('exit', (code) => {
+      logger.info('ZeroTTS', `Tiến trình kết thúc (code ${code})`);
+      zerottsProcess = null;
+      zerottsPid = null;
+      broadcast('zerotts_status', { running: false });
+    });
+
+    broadcast('zerotts_status', { running: true, pid: zerottsPid });
+    res.json({ success: true, status: 'starting', pid: zerottsPid, message: 'Đang khởi động ZeroTTS...' });
+  } catch (err) {
+    logger.error('ZeroTTS', `Lỗi khởi động: ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/zerotts/status — Kiểm tra ZeroTTS có online không
+app.get('/api/zerotts/status', async (req, res) => {
+  const processAlive = !!(zerottsProcess && !zerottsProcess.killed);
+  try {
+    const r = await axios.get(`http://localhost:${ZEROTTS_PORT}/api/tts-status`, { timeout: 2500 });
+    const online = !!(r.data?.ok || r.data?.status === 'ok');
+    res.json({ success: true, online, processAlive, pid: zerottsPid });
+  } catch {
+    res.json({ success: true, online: false, processAlive, pid: zerottsPid });
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Start Server
 server.listen(PORT, () => {
