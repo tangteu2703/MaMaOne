@@ -55,13 +55,13 @@ async function generateScriptAndPrompts(topic, stepCount = 5) {
   }
 
   const candidateModels = [
-    'gemini-3.5-flash',
-    'gemini-3.7-flash',
     'gemini-flash-latest',
-    'gemini-1.5-flash',
+    'gemini-3.5-flash',
     'gemini-2.5-flash',
     config.gemini.model,
   ].filter((v, i, a) => v && a.indexOf(v) === i);
+
+  const requestOptions = { apiVersion: 'v1beta' };
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const promptText = `Bạn là đạo diễn kịch bản video AI chuyên nghiệp cho TikTok/Shorts/Reels.
@@ -98,7 +98,7 @@ Yêu cầu output JSON duy nhất (không bọc thêm markdown):
   for (const modelName of candidateModels) {
     try {
       logger.info(MODULE, `Đang thử gọi Gemini model: ${modelName}`);
-      const model = genAI.getGenerativeModel({ model: modelName });
+      const model = genAI.getGenerativeModel({ model: modelName }, requestOptions);
       const result = await model.generateContent(promptText);
       const text = result.response.text().trim();
 

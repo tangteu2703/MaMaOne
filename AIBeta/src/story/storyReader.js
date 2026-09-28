@@ -203,10 +203,11 @@ Hãy tạo metadata cuốn hút cho video TikTok Truyện Audio này. Trả về
     return getDefaultEpisodeMetadata(storyTitle, episode);
   }
 
-  const modelsToTry = [config.gemini.model, 'gemini-2.5-flash', 'gemini-1.5-flash-8b', 'gemini-2.0-flash-exp'].filter(Boolean);
+  const requestOptions = { apiVersion: 'v1beta' };
+  const modelsToTry = [config.gemini.model, 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-2.5-flash'].filter(Boolean);
   for (const modelName of modelsToTry) {
     try {
-      const model = genAI.getGenerativeModel({ model: modelName });
+      const model = genAI.getGenerativeModel({ model: modelName }, requestOptions);
       const result = await model.generateContent(prompt);
       const text = result.response.text().trim();
       const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
