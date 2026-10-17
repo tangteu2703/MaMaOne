@@ -1,0 +1,326 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "description": "Pipeline AI viết truyện dài tập — mỗi bước làm 1 nhiệm vụ",
+    "pipeline": [
+      "step_1_story_blueprint  → xây dựng nhân vật, thế giới, arc (gọi 1 lần)",
+      "step_2_episode_writer   → viết nội dung từng tập (gọi N lần)",
+      "step_3_scene_expander   → mở rộng cảnh chi tiết (tuỳ chọn)",
+      "step_4_voice_prompt     → tạo script TTS cho từng tập",
+      "step_5_image_prompt     → tạo prompt ảnh AI cho từng cảnh"
+    ]
+  },
+
+  "step_1_story_blueprint": {
+    "_desc": "Gọi một lần duy nhất — trả về JSON làm nền cho tất cả các bước sau",
+    "model": "gemini-3.1-pro-preview",
+    "temperature": 0.85,
+    "request": {
+      "role": "Bạn là biên kịch chuyên nghiệp chuyên xây dựng truyện dài tập bằng AI.",
+      "task": "Từ ý tưởng được cung cấp, hãy phân tích và xây dựng bộ khung nhân vật, thế giới và cốt truyện để làm nền cho việc viết truyện.",
+      "instructions": [
+        "Tự xác định số lượng nhân vật cần thiết, không tạo nhân vật dư thừa.",
+        "Phân vai rõ: nhân vật chính, đồng minh, phản diện, nhân vật phụ và nhân vật bí ẩn.",
+        "Mỗi nhân vật gồm: tên, vai trò, tính cách, quan hệ, ngoại hình, trang phục, đặc điểm nhận diện và giọng nói.",
+        "Thiết kế ngoại hình và giọng nói có tính nhất quán để dùng cho AI tạo ảnh và AI voice.",
+        "Xây dựng xung đột chính, bí ẩn trung tâm, các tuyến truyện, arc và các twist tiềm năng.",
+        "Đảm bảo câu chuyện có logic, cảm xúc, cao trào và khả năng phát triển thành nhiều tập.",
+        "Không viết toàn bộ truyện ở bước này.",
+        "CHỈ trả về JSON thuần túy, KHÔNG markdown, KHÔNG giải thích."
+      ],
+      "output_schema": {
+        "story": {
+          "title": "Tên truyện hấp dẫn",
+          "genre": "Thể loại",
+          "style": "Phong cách văn — kịch tính / thơ văn / nhanh / chi tiết",
+          "tone": "Không khí — tối tăm / hào hùng / lãng mạn / hài hước",
+          "summary": "Tóm tắt ý tưởng và xung đột chính (150-200 từ)",
+          "central_conflict": "Xung đột cốt lõi của cả bộ truyện",
+          "central_mystery": "Bí ẩn xuyên suốt không hé lộ ngay"
+        },
+        "characters": [
+          {
+            "id": "char_001",
+            "name": "",
+            "role": "protagonist | ally | antagonist | supporting | mystery",
+            "personality": "3-5 tính cách nổi bật",
+            "relationship": "Mối quan hệ với nhân vật khác (dùng id)",
+            "appearance": "Ngoại hình chi tiết — dành cho AI ảnh",
+            "outfit": "Trang phục đặc trưng",
+            "signature": "Đặc điểm nhận diện độc đáo (cử chỉ, vật phẩm, thói quen)",
+            "voice": "Giọng nói — tone, tốc độ, từ dùng hay — dành cho TTS",
+            "arc": "Hành trình phát triển từ đầu đến cuối"
+          }
+        ],
+        "world": {
+          "name": "Tên thế giới",
+          "description": "Mô tả ngắn về thế giới",
+          "power_system": "Hệ thống năng lực / phép thuật / võ công",
+          "factions": [
+            {
+              "name": "Tên thế lực",
+              "role": "Vai trò trong câu chuyện",
+              "stance": "ally | neutral | enemy | unknown"
+            }
+          ],
+          "key_locations": [
+            {
+              "name": "Tên địa điểm",
+              "description": "Mô tả ngắn",
+              "importance": "Vai trò trong plot"
+            }
+          ]
+        },
+        "arcs": [
+          {
+            "arc_id": "arc_01",
+            "title": "Tên arc",
+            "episodes": "Tập bao nhiêu đến bao nhiêu (ước tính)",
+            "goal": "Mục tiêu nhân vật chính muốn đạt trong arc này",
+            "obstacle": "Rào cản chính",
+            "climax": "Đỉnh điểm của arc",
+            "outcome": "Kết quả và thay đổi"
+          }
+        ],
+        "mysteries": [
+          {
+            "id": "mys_001",
+            "question": "Câu hỏi bí ẩn",
+            "reveal_arc": "arc_id — hé lộ trong arc nào",
+            "hints": ["Manh mối rải trong các tập trước khi hé lộ"]
+          }
+        ],
+        "twists": [
+          {
+            "id": "twist_001",
+            "description": "Mô tả twist",
+            "timing": "arc_id — xảy ra trong arc nào",
+            "impact": "Tác động lên cốt truyện"
+          }
+        ],
+        "episode_outline": [
+          {
+            "ep": 1,
+            "arc_id": "arc_01",
+            "title": "Tiêu đề tập",
+            "summary": "Tóm tắt sự kiện chính (2-3 câu)",
+            "hook": "Câu mở đầu thu hút (dưới 20 từ)",
+            "cliffhanger": "Câu kết gây tò mò",
+            "emotion_peak": "Cảm xúc đỉnh của tập — xúc động / căng thẳng / phấn khích / kinh hoàng"
+          }
+        ]
+      },
+      "story_idea": "{{STORY_IDEA}}"
+    }
+  },
+
+  "step_2_episode_writer": {
+    "_desc": "Gọi lần lượt cho từng tập — input lấy từ output step_1",
+    "_input_from": {
+      "blueprint": "step_1.response",
+      "characters": "step_1.response.characters",
+      "current_arc": "step_1.response.arcs[N]",
+      "episode_outline": "step_1.response.episode_outline[N]",
+      "previous_summary": "step_2.previous_response.summary (nếu tập > 1)"
+    },
+    "model": "gemini-3.8-flash",
+    "temperature": 0.92,
+    "request": {
+      "role": "Bạn là nhà văn Việt Nam chuyên viết truyện {{genre}} cuốn hút, có chiều sâu cảm xúc.",
+      "context": {
+        "story_title": "{{story.title}}",
+        "genre": "{{story.genre}}",
+        "style": "{{story.style}}",
+        "tone": "{{story.tone}}",
+        "world_summary": "{{world.description}}",
+        "power_system": "{{world.power_system}}",
+        "characters_summary": "{{characters[].name}} — {{characters[].personality}} — {{characters[].arc}}",
+        "current_arc": "{{arc.title}}: {{arc.goal}}",
+        "episode_outline": {
+          "ep": "{{ep}}",
+          "title": "{{episode_outline.title}}",
+          "summary": "{{episode_outline.summary}}",
+          "hook": "{{episode_outline.hook}}",
+          "cliffhanger": "{{episode_outline.cliffhanger}}",
+          "emotion_peak": "{{episode_outline.emotion_peak}}"
+        },
+        "previous_summary": "{{previous_summary hoặc null}}"
+      },
+      "instructions": [
+        "Viết khoảng {{target_words}} từ, bắt buộc đủ độ dài.",
+        "Mở đầu PHẢI dùng hook đã cho — ngay câu đầu tiên.",
+        "Kết thúc bằng cliffhanger đã cho — có thể mở rộng nhưng không thay đổi ý.",
+        "Đỉnh cảm xúc (emotion_peak) phải xuất hiện rõ ràng ở 2/3 đoạn truyện.",
+        "Dùng đối thoại xen kẽ hành động — tỷ lệ 40% đối thoại / 60% mô tả.",
+        "Không tóm tắt lại các tập trước, chỉ tiếp nối tự nhiên.",
+        "Không thêm ghi chú, giải thích ngoài truyện.",
+        "Văn phong {{style}}, giọng {{tone}}.",
+        "Dòng đầu PHẢI là: TẬP {{ep}}: {{episode_outline.title}}",
+        "CHỈ trả về JSON thuần túy, KHÔNG markdown, KHÔNG giải thích."
+      ],
+      "output_schema": {
+        "ep": "{{ep}}",
+        "title": "{{episode_outline.title}}",
+        "content": "Nội dung truyện đầy đủ",
+        "word_count": 0,
+        "summary": "Tóm tắt 150 từ — dùng làm previous_summary cho tập tiếp theo",
+        "characters_mentioned": ["char_id"],
+        "arc_id": "{{arc.arc_id}}",
+        "emotion_delivered": "Đánh giá ngắn: cảm xúc đỉnh đã thể hiện thế nào"
+      }
+    }
+  },
+
+  "step_3_scene_expander": {
+    "_desc": "Tuỳ chọn — mở rộng 1 cảnh cụ thể thành đoạn chi tiết hơn cho voice/video",
+    "_input_from": {
+      "episode_content": "step_2.response.content (đoạn cụ thể cần mở rộng)",
+      "characters": "step_1.response.characters"
+    },
+    "model": "gemini-3.8-flash",
+    "temperature": 0.88,
+    "request": {
+      "role": "Bạn là đạo diễn kiêm nhà văn — chuyên chuyển đoạn truyện thành cảnh quay chi tiết.",
+      "scene_text": "{{ĐOẠN CẦN MỞ RỘNG}}",
+      "instructions": [
+        "Mở rộng cảnh này lên ~300 từ.",
+        "Thêm chi tiết cảm giác: thị giác, thính giác, xúc giác, mùi hương.",
+        "Nhân vật phải hành động + suy nghĩ nội tâm đan xen.",
+        "Giữ nguyên ý gốc, chỉ làm phong phú thêm.",
+        "CHỈ trả về JSON thuần túy."
+      ],
+      "output_schema": {
+        "expanded_scene": "Cảnh mở rộng đầy đủ",
+        "visual_cues": ["Các chi tiết hình ảnh nổi bật — dùng cho AI ảnh"],
+        "mood": "Không khí cảnh — tối / sáng / căng thẳng / thanh bình"
+      }
+    }
+  },
+
+  "step_4_voice_prompt": {
+    "_desc": "Tạo script đọc TTS từ nội dung tập — tối ưu cho giọng đọc Việt",
+    "_input_from": {
+      "content": "step_2.response.content",
+      "characters": "step_1.response.characters"
+    },
+    "model": "gemini-3.8-flash",
+    "temperature": 0.5,
+    "request": {
+      "role": "Bạn là chuyên gia biên tập script audio cho podcast truyện Việt Nam.",
+      "raw_content": "{{CONTENT}}",
+      "instructions": [
+        "Loại bỏ các ký tự đặc biệt không đọc được (*, #, —, ═══).",
+        "Giữ nguyên đối thoại và hành động.",
+        "Thêm [PAUSE] sau câu quan trọng hoặc đỉnh cảm xúc.",
+        "Thêm [SLOW] trước đoạn trang trọng, [FAST] trước đoạn hành động gấp.",
+        "Đảm bảo mỗi câu đủ tự nhiên khi đọc to — không quá dài, không ngắt kỳ lạ.",
+        "Không thêm nội dung mới.",
+        "CHỈ trả về JSON thuần túy."
+      ],
+      "output_schema": {
+        "tts_script": "Script sạch đã tối ưu cho TTS",
+        "estimated_duration_seconds": 0,
+        "character_voices": [
+          {
+            "char_id": "",
+            "voice_suggestion": "Giọng đọc phù hợp — ví dụ: HoaiMy (nữ nhẹ nhàng), NamMinh (nam trầm ấm)"
+          }
+        ]
+      }
+    }
+  },
+
+  "step_5_image_prompt": {
+    "_desc": "Tạo prompt ảnh AI cho các cảnh quan trọng trong tập",
+    "_input_from": {
+      "content": "step_2.response.content",
+      "characters": "step_1.response.characters",
+      "world": "step_1.response.world"
+    },
+    "model": "gemini-3.8-flash",
+    "temperature": 0.7,
+    "request": {
+      "role": "Bạn là art director chuyên tạo prompt ảnh AI cho manhwa/webtoon Việt Nam.",
+      "episode_content": "{{CONTENT}}",
+      "characters_appearance": "{{characters[].name}}: {{characters[].appearance}}, {{characters[].outfit}}",
+      "world_style": "{{world.description}}",
+      "instructions": [
+        "Chọn 3-5 cảnh quan trọng nhất trong tập để tạo ảnh.",
+        "Mỗi prompt: mô tả nhân vật (theo appearance đã cho) + hành động + bối cảnh + ánh sáng + phong cách.",
+        "Phong cách: manhwa style, cinematic lighting, high detail, dramatic composition.",
+        "Ưu tiên cảnh có cảm xúc mạnh: đỉnh điểm, cliffhanger, lần gặp đầu tiên.",
+        "Thêm negative_prompt để tránh lỗi thường gặp.",
+        "CHỈ trả về JSON thuần túy."
+      ],
+      "output_schema": {
+        "scenes": [
+          {
+            "scene_id": 1,
+            "description": "Mô tả cảnh bằng tiếng Việt — để đối chiếu",
+            "prompt_en": "Detailed English prompt for AI image generation",
+            "negative_prompt": "blurry, low quality, bad anatomy, extra limbs, watermark, text",
+            "aspect_ratio": "9:16 | 16:9 | 1:1",
+            "priority": "high | medium | low"
+          }
+        ]
+      }
+    }
+  },
+
+  "example_filled": {
+    "_desc": "Ví dụ điền thực tế — copy story_idea vào step_1.request.story_idea",
+    "story_idea": "Chàng trai mù bị gia tộc ruồng bỏ, nuốt phải linh châu của rồng thần, bắt đầu tu tiên báo thù — nhưng càng mạnh thì bí ẩn về thân thế càng nguy hiểm",
+    "config": {
+      "target_words_per_episode": 1000,
+      "total_episodes": 10,
+      "genre": "Tiên hiệp",
+      "style": "dramatic",
+      "tone": "tối tăm, hào hùng"
+    }
+  },
+
+  "api_call_sequence": {
+    "_desc": "Thứ tự gọi API trong code",
+    "sequence": [
+      {
+        "order": 1,
+        "step": "step_1_story_blueprint",
+        "call_once": true,
+        "save_as": "blueprint",
+        "note": "Lưu JSON response → dùng cho mọi tập sau"
+      },
+      {
+        "order": 2,
+        "step": "step_2_episode_writer",
+        "call_once": false,
+        "repeat": "N times — 1 per episode",
+        "inputs": ["blueprint.story", "blueprint.characters", "blueprint.arcs[i]", "blueprint.episode_outline[i]", "episodes[i-1].summary"],
+        "save_as": "episodes[i]",
+        "note": "Dùng episodes[i-1].summary làm previous_summary"
+      },
+      {
+        "order": 3,
+        "step": "step_4_voice_prompt",
+        "call_once": false,
+        "repeat": "N times — sau mỗi episode",
+        "inputs": ["episodes[i].content", "blueprint.characters"],
+        "save_as": "tts_scripts[i]"
+      },
+      {
+        "order": 4,
+        "step": "step_5_image_prompt",
+        "call_once": false,
+        "repeat": "N times — sau mỗi episode",
+        "inputs": ["episodes[i].content", "blueprint.characters", "blueprint.world"],
+        "save_as": "image_prompts[i]"
+      },
+      {
+        "order": 5,
+        "step": "step_3_scene_expander",
+        "call_once": false,
+        "repeat": "optional — chỉ cho cảnh key cần mở rộng",
+        "inputs": ["episodes[i].content (đoạn cụ thể)"]
+      }
+    ]
+  }
+}

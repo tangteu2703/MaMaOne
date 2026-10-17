@@ -9,7 +9,7 @@
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
 <style>
-:root{--bg:#07090f;--sur:#0c101a;--card:#101623;--elev:#141c2e;--brd:rgba(255,255,255,.07);--brda:rgba(99,102,241,.35);--tx:#e8edf8;--tx2:#7a8aaa;--txm:#3d4a66;--ac:#6366f1;--ac2:#818cf8;--em:#10b981;--am:#f59e0b;--vl:#8b5cf6;--sw:276px}
+:root{--bg:#07090f;--sur:#0c101a;--card:#101623;--elev:#141c2e;--brd:rgba(255,255,255,.07);--brda:rgba(99,102,241,.35);--tx:#e8edf8;--tx2:#7a8aaa;--txm:#3d4a66;--ac:#6366f1;--ac2:#818cf8;--em:#10b981;--am:#f59e0b;--vl:#8b5cf6;--sw:41.67%}
 *{box-sizing:border-box}html,body{height:100%;overflow:hidden;margin:0}
 body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--tx)}
 .fm{font-family:'JetBrains Mono',monospace}
@@ -37,8 +37,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .tp{display:none;height:100%}
 .tp.active{display:flex;flex-direction:column}
 .twoc{display:flex;height:100%;overflow:hidden}
-.cleft{width:var(--sw);min-width:var(--sw);border-right:1px solid var(--brd);background:var(--sur);display:flex;flex-direction:column;overflow:hidden}
-.cmain{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.cleft{width:41.67%;min-width:0;flex-shrink:0;border-right:1px solid var(--brd);background:var(--sur);display:flex;flex-direction:column;overflow:hidden}
+.cmain{width:58.33%;flex:none;display:flex;flex-direction:column;overflow:hidden}
 .phd{padding:8px 12px;border-bottom:1px solid var(--brd);display:flex;align-items:center;gap:7px;flex-shrink:0;min-height:40px}
 .phdtitle{font-size:.75rem;font-weight:700;color:var(--tx);flex:1}
 .pbody{flex:1;overflow-y:auto;padding:9px}
@@ -137,6 +137,53 @@ hr.d{border:none;border-top:1px solid var(--brd);margin:0}
 .ai-chap-tab{padding:3px 9px;border-radius:5px;border:1px solid var(--brd);background:rgba(255,255,255,.03);color:var(--tx2);font-size:.67rem;font-weight:600;cursor:pointer;transition:all .14s}
 .ai-chap-tab:hover{border-color:var(--brda);color:var(--tx)}
 .ai-chap-tab.active{border-color:var(--ac);background:rgba(99,102,241,.12);color:var(--ac2)}
+
+/*    TAB 3: TAO ANH    */
+.img-layout{display:flex;gap:0;height:100%;overflow:hidden}
+.img-left{width:41.67%;flex-shrink:0;border-right:1px solid var(--brd);display:flex;flex-direction:column;overflow:hidden}
+.img-right{width:58.33%;flex:none;display:flex;flex-direction:column;overflow:hidden;padding:10px}
+.img-right-row1{flex:0 0 auto;border-bottom:1px solid var(--brd);padding-bottom:10px;margin-bottom:10px}
+.img-right-row2{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.story-preview{flex:1;overflow-y:auto;padding:8px;font-size:.68rem;color:var(--tx2);line-height:1.6;white-space:pre-wrap}
+.isc{padding:6px 8px;cursor:pointer;border-radius:6px;transition:all .12s;border:1px solid transparent}
+.isc:hover{background:rgba(99,102,241,.08);border-color:rgba(99,102,241,.2)}
+.isc.sel{background:rgba(99,102,241,.14);border-color:rgba(99,102,241,.35)}
+.isc-title{font-size:.72rem;font-weight:700;color:var(--tx);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.isc-meta{font-size:.6rem;color:var(--tx2);margin-top:2px}
+.analyze-btn{background:linear-gradient(135deg,#6366f1,#8b5cf6)!important;border:none!important;color:#fff!important;font-weight:700}
+.analyze-btn:disabled{opacity:.45;cursor:not-allowed}
+/* Char grid */
+.char-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:max-content;gap:8px;padding:8px;overflow-y:auto;max-height:300px}
+.char-card{display:flex;flex-direction:row;gap:10px;background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:8px;position:relative;min-width:0}
+.char-card.loading{opacity:.6}
+.char-img-wrap{width:110px;height:146px;border-radius:8px;overflow:hidden;border:2px solid var(--brd);background:var(--card2);position:relative;cursor:pointer;flex-shrink:0}
+.char-img-wrap img{width:100%;height:100%;object-fit:cover;display:block}
+.char-gen-btn{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:rgba(0,0,0,.55);color:#fff;font-size:.6rem;font-weight:700;opacity:0;transition:opacity .2s}
+.char-img-wrap:hover .char-gen-btn{opacity:1}
+.char-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.char-name{font-size:.74rem;font-weight:700;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.char-role{font-size:.6rem;color:var(--tx2)}
+.char-prompt-label{font-size:.58rem;color:var(--tx2);font-weight:600;margin-top:2px}
+.char-prompt-ta{width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.08);border-radius:6px;color:var(--tx2);font-size:.64rem;font-family:'JetBrains Mono',monospace;line-height:1.45;padding:4px 6px;resize:vertical;min-height:44px;max-height:120px;outline:none;transition:border-color .15s}
+.char-prompt-ta:focus{border-color:rgba(99,102,241,.5);color:var(--tx);background:rgba(0,0,0,.5)}
+/* Scene grid */
+.scene-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:max-content;gap:10px;align-content:start;overflow-y:auto;flex:1;min-height:0;padding:4px 6px}
+.scene-card{background:var(--card);border:1px solid var(--brd);border-radius:10px;overflow:hidden;display:flex;flex-direction:row;transition:border-color .15s;min-height:230px}
+.scene-card.approved{border-color:rgba(16,185,129,.5)!important;background:rgba(16,185,129,.04)}
+.scene-card.done{border-color:rgba(52,211,153,.3)}
+.scene-card.generating{border-color:rgba(245,158,11,.4)}
+.scene-img-wrap{width:240px;min-width:240px;height:auto;flex-shrink:0;position:relative;background:rgba(0,0,0,.35)}
+.scene-img{width:240px;height:100%;min-height:230px;object-fit:cover;display:block;cursor:zoom-in}
+.scene-img-placeholder{width:240px;min-height:230px;display:flex;align-items:center;justify-content:center;color:var(--txm);font-size:.68rem;flex-direction:column;gap:4px;background:rgba(255,255,255,.02);height:100%}
+.scene-body{padding:8px 10px;display:flex;flex-direction:column;gap:5px;flex:1;min-width:0;overflow:hidden}
+.scene-ep{font-size:.67rem;color:var(--ac2);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scene-desc{font-size:.73rem;color:var(--tx);line-height:1.5;}
+.scene-prompt-label{font-size:.62rem;color:var(--tx2);font-weight:600;margin-top:3px}
+.scene-prompt-ta{width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.08);border-radius:6px;color:var(--tx2);font-size:.68rem;font-family:'JetBrains Mono',monospace;line-height:1.5;padding:5px 7px;resize:vertical;min-height:90px;max-height:240px;outline:none;transition:border-color .15s}
+.scene-prompt-ta:focus{border-color:rgba(99,102,241,.5);color:var(--tx);background:rgba(0,0,0,.5)}
+.scene-footer{display:flex;align-items:center;gap:5px;margin-top:4px;flex-wrap:wrap}
+.scene-approve-btn{font-size:.65rem;padding:3px 9px;border-radius:5px;border:1px solid var(--brd);background:transparent;color:var(--tx2);cursor:pointer;transition:all .14s;white-space:nowrap}
+.scene-approve-btn.approved{background:rgba(16,185,129,.15);border-color:#34d399;color:#34d399}
 </style>
 </head>
 <body>
@@ -147,14 +194,14 @@ hr.d{border:none;border-top:1px solid var(--brd);margin:0}
 <header id="hd">
   <div class="logo">
     <div class="logo-ic"><i class="bi bi-stars"></i></div>
-    AIBeta Studio <span class="lbadge">v2</span>
+    AIBeta Studio
   </div>
   <nav class="tnav">
     <button class="tbtn active" data-tab="stories" onclick="ST('stories')"><span class="tnum">1</span><i class="bi bi-book-half"></i> Kho Truyện</button>
     <button class="tbtn" data-tab="voice" onclick="ST('voice')"><span class="tnum">2</span><i class="bi bi-mic-fill"></i> Tạo Voice</button>
-    <button class="tbtn" data-tab="images" onclick="ST('images')"><span class="tnum">3</span><i class="bi bi-images"></i> Tạo Ảnh <span class="bsoon">Sắp có</span></button>
+    <button class="tbtn" data-tab="images" onclick="ST('images')"><span class="tnum">3</span><i class="bi bi-images"></i> Tạo Ảnh </button>
     <button class="tbtn" data-tab="bgvideo" onclick="ST('bgvideo')"><span class="tnum">4</span><i class="bi bi-film"></i> Video Nền</button>
-    <button class="tbtn" data-tab="merge" onclick="ST('merge')"><span class="tnum">5</span><i class="bi bi-layers-fill"></i> Ghép Video <span class="bsoon">Sắp có</span></button>
+    <button class="tbtn" data-tab="merge" onclick="ST('merge')"><span class="tnum">5</span><i class="bi bi-layers-fill"></i> Ghép Video </button>
     <button class="tbtn" data-tab="vault" onclick="ST('vault')"><span class="tnum">6</span><i class="bi bi-collection-play-fill"></i> Kho Video</button>
   </nav>
   <div class="d-flex align-items-center gap-2 ms-auto" style="flex-shrink:0">
@@ -277,7 +324,7 @@ hr.d{border:none;border-top:1px solid var(--brd);margin:0}
 <div class="tp" id="tab-voice">
 <div class="twoc">
   <!-- Left: TTS settings -->
-  <div class="cleft" style="width:286px;min-width:286px">
+  <div class="cleft">
     <div class="phd"><i class="bi bi-sliders" style="color:var(--em)"></i><span class="phdtitle">Cài đặt TTS</span></div>
     <div class="pbody" style="display:flex;flex-direction:column;gap:10px">
       <div>
@@ -359,7 +406,7 @@ hr.d{border:none;border-top:1px solid var(--brd);margin:0}
     <div class="phd"><i class="bi bi-music-note-list" style="color:var(--em)"></i><span class="phdtitle" id="v-title">Chọn truyện để bắt đầu tạo voice</span><button class="btic ms-auto" onclick="loadAudio()"><i class="bi bi-arrow-clockwise"></i></button></div>
     <div class="flex-grow-1 overflow-hidden d-flex">
       <!-- Ep col -->
-      <div style="width:320px;min-width:320px;border-right:1px solid var(--brd);display:flex;flex-direction:column;overflow:hidden">
+      <div style="width:50%;min-width:0;flex-shrink:0;border-right:1px solid var(--brd);display:flex;flex-direction:column;overflow:hidden">
         <div class="phd" style="background:rgba(255,255,255,.02);padding:6px 11px">
           <span style="font-size:.68rem;color:var(--tx2)">Danh sách tập</span>
           <div class="ms-auto d-flex gap-1">
@@ -427,7 +474,116 @@ hr.d{border:none;border-top:1px solid var(--brd);margin:0}
 
 <!-- TAB 3: TAO ANH -->
 <div class="tp" id="tab-images">
-<div class="cs"><div class="csic" style="background:rgba(139,92,246,.12)"><i class="bi bi-images" style="color:var(--vl)"></i></div><h3>Tạo Ảnh AI</h3><p>Sinh ảnh minh họa theo từng tập truyện bằng AI — đang phát triển.</p><span style="font-size:.68rem;color:var(--txm)">Sắp ra mắt</span></div>
+<div class="img-layout">
+
+  <!-- COT TRAI: Danh sach truyen + Text preview -->
+  <div class="img-left">
+    <div class="phd">
+      <i class="bi bi-book-half" style="color:var(--vl)"></i>
+      <span class="phdtitle">Chọn Truyện</span>
+      <button class="btic ms-auto" onclick="imgLoadStories()" title="Tai lai"><i class="bi bi-arrow-clockwise"></i></button>
+    </div>
+    <div style="padding:8px;border-bottom:1px solid var(--brd);flex-shrink:0">
+      <input type="text" id="img-story-search" class="form-control" placeholder="Tìm truyện..." style="height:26px;font-size:.7rem" oninput="imgFilterStories()">
+    </div>
+    <div style="flex:0 0 140px;overflow-y:auto;border-bottom:1px solid var(--brd);padding:7px" id="img-story-list">
+      <div class="es"><i class="bi bi-book"></i><p>Loadding...</p></div>
+    </div>
+    <!-- Chon kieu ve anh (Art Style) -->
+    <div style="padding:8px 10px;border-bottom:1px solid var(--brd);background:rgba(255,255,255,0.02);flex-shrink:0">
+      <div class="d-flex align-items-center justify-content-between mb-1">
+        <label for="img-art-style" style="font-size:.68rem;font-weight:700;color:var(--tx);margin:0;display:flex;align-items:center;gap:5px">
+          <i class="bi bi-palette-fill" style="color:var(--vl)"></i>
+          <span>Kiểu vẽ ảnh:</span>
+        </label>
+        <span id="img-style-hint" style="font-size:.6rem;color:var(--txm)">Đồng bộ prompt</span>
+      </div>
+      <select id="img-art-style" class="form-select form-select-sm" style="font-size:.72rem;background:var(--bg3);color:var(--tx);border:1px solid var(--brd);border-radius:6px;padding:4px 8px;cursor:pointer" onchange="onArtStyleChange()">
+        <option value="anime">✨ Anime điện ảnh (Makoto Shinkai)</option>
+        <option value="hd">📸 Ảnh HD chân thực (8K)</option>
+        <option value="anime2d">🎨 Hoạt hình 2D (cartoon)</option>
+        <option value="stickman">✏️ Người que (stick figure)</option>
+        <option value="ghibli">🍃 Ghibli màu nước</option>
+        <option value="webtoon">📱 Webtoon / Manhwa</option>
+        <option value="pixar3d">🎬 3D hoạt hình (Pixar)</option>
+        <option value="inkwash">🖌️ Thủy mặc cổ phong</option>
+        <option value="manga">📖 Manga đen trắng</option>
+      </select>
+    </div>
+    <!-- Nut phan tich nhan vat -->
+    <div style="padding:8px;flex-shrink:0;border-bottom:1px solid var(--brd)">
+      <button class="btn analyze-btn w-100" id="btn-analyze-chars" onclick="analyzeCharacters()" disabled style="font-size:.74rem;padding:6px">
+        <i class="bi bi-person-bounding-box me-1"></i>Phân Tích Nhân Vật
+      </button>
+      <div id="char-analyze-st" style="font-size:.63rem;color:var(--tx2);margin-top:5px;min-height:14px;text-align:center"></div>
+    </div>
+    <!-- Preview noi dung truyen -->
+    <div class="phd" style="padding:6px 10px">
+      <i class="bi bi-file-text" style="color:var(--tx2);font-size:.8rem"></i>
+      <span style="font-size:.68rem;font-weight:700;color:var(--tx2)" id="img-story-preview-title">Nội dung truyện</span>
+    </div>
+    <div class="story-preview" id="img-story-preview"><span style="color:var(--txm)">← Chọn một truyện để xem nội dung</span></div>
+  </div>
+
+  <!-- COT PHAI -->
+  <div class="img-right">
+
+    <!-- ROW 1: Anh chan dung nhan vat -->
+    <div class="img-right-row1">
+      <div class="phd" style="padding:6px 12px">
+        <i class="bi bi-people-fill" style="color:var(--vl)"></i>
+        <span class="phdtitle">Nhân Vật</span>
+        <span id="char-count-badge" class="badge rounded-pill ms-1" style="background:rgba(139,92,246,.15);color:#a78bfa;font-size:.55rem">0</span>
+        <div class="ms-auto d-flex gap-2">
+          <button class="btn btn-g btn-sm" onclick="genAllCharImgs()" id="btn-gen-all-chars" disabled style="font-size:.65rem;padding:3px 9px">
+            <i class="bi bi-magic me-1"></i>Tạo Tất Cả Ảnh NV
+          </button>
+        </div>
+      </div>
+      <div class="char-grid" id="char-grid">
+        <div style="width:100%;display:flex;align-items:center;justify-content:center;color:var(--txm);font-size:.72rem;padding:20px;flex-direction:column;gap:6px">
+          <i class="bi bi-person-plus" style="font-size:1.4rem;opacity:.2"></i>
+          <span>Phân tích nhân vật để xem ở đây</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ROW 2: Prompt cards canh truyen -->
+    <div class="img-right-row2">
+      <div class="d-flex align-items-center gap-2 mb-3" style="flex-shrink:0">
+        <i class="bi bi-grid-3x3-gap-fill" style="color:var(--em)"></i>
+        <span style="font-size:.75rem;font-weight:700">Cảnh Truyện → Tạo Ảnh</span>
+        <span id="scene-count-badge" class="badge rounded-pill" style="background:rgba(16,185,129,.12);color:#34d399;font-size:.55rem">0 cảnh</span>
+        <span id="scene-gen-progress" style="display:none;font-size:.62rem;color:var(--am);background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);border-radius:5px;padding:2px 7px"></span>
+        <div class="ms-auto d-flex gap-2 flex-wrap">
+          <div class="d-flex align-items-center gap-1" style="font-size:.65rem;color:var(--txm)" title="Nhập số ảnh/cảnh muốn tạo và thời lượng audio. Để trống = tự ước tính theo số từ (~10 giây/cảnh)">
+            <label for="scene-target-count" class="mb-0">Số cảnh</label>
+            <input type="number" id="scene-target-count" min="5" max="300" step="1" placeholder="auto" class="form-control form-control-sm" style="width:68px;font-size:.68rem;padding:2px 6px">
+            <label for="scene-audio-min" class="mb-0 ms-1">Audio</label>
+            <input type="number" id="scene-audio-min" min="1" max="600" step="0.5" placeholder="auto" class="form-control form-control-sm" style="width:62px;font-size:.68rem;padding:2px 6px">
+            <span>phút</span>
+            <span id="scene-est-hint" style="opacity:.7"></span>
+          </div>
+          <button class="btn analyze-btn btn-sm" id="btn-analyze-scenes" onclick="analyzeScenes()" disabled style="font-size:.65rem;padding:3px 9px">
+            <i class="bi bi-stars me-1"></i>Phân Tích Cảnh
+          </button>
+          <button class="btn btn-sm" id="btn-scenes-to-video" onclick="imgScenestoVideo()" disabled
+            title="Chuyển ảnh cảnh đã tạo thành clip video ngắn → Tab Video Nền"
+            style="font-size:.65rem;padding:3px 10px;background:linear-gradient(135deg,#7c3aed,#6d28d9)!important;border:none!important;color:#fff!important;font-weight:700">
+            <i class="bi bi-film me-1"></i>Sinh Video
+          </button>
+        </div>
+      </div>
+      <div class="scene-grid" id="scene-grid">
+        <div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--txm)">
+          <i class="bi bi-image" style="font-size:2rem;opacity:.15;display:block;margin-bottom:8px"></i>
+          <div style="font-size:.74rem">Chọn truyện rồi nhấn <b>Phân tích Nhân Vật</b> va <b>Phân Tích Cảnh</b></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
 </div>
 
 <!-- TAB 4: VIDEO NEN -->
@@ -1394,12 +1550,387 @@ async function loadVault(){
 
 // ── INIT ──────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded',()=>{
-  connectWS();loadStories();loadAudio();
+  connectWS();loadStories();loadAudio();imgLoadStories();
   document.getElementById('et-panel').style.display='flex';
   document.getElementById('zt-panel').style.display='none';
   updateVoicePickerUI(edgeVoicesList, 'vi-VN-HoaiMyNeural');
   log('AIBeta Studio v2.0 khởi động','success');
 });
+
+
+// TAB 3: TAO ANH - Character Extraction + Scene Image Generator
+let imgAllStories=[], imgSelStoryId=null, imgSelStoryData=null;
+let imgCharacters=[];
+let imgScenes=[];
+
+async function imgLoadStories(){
+  try{
+    const r=await AG('/api/stories');
+    if(!r.success)return;
+    imgAllStories=r.stories||[];
+    imgRenderStoryList(imgAllStories);
+  }catch(e){ console.error(e); }
+}
+function imgFilterStories(){
+  const q=document.getElementById('img-story-search').value.toLowerCase();
+  imgRenderStoryList(q?imgAllStories.filter(s=>s.title.toLowerCase().includes(q)):imgAllStories);
+}
+function imgRenderStoryList(list){
+  const el=document.getElementById('img-story-list');
+  if(!el)return;
+  if(!list.length){el.innerHTML='<div class="es"><i class="bi bi-book"></i><p>Chua co truyen</p></div>';return;}
+  el.innerHTML=list.map(s=>
+    '<div class="isc '+(s.id===imgSelStoryId?'sel':'')+'" id="isc-'+s.id+'" onclick="imgSelStory(\''+s.id+'\')">'+
+    '<div class="isc-title">'+s.title+'</div>'+
+    '<div class="isc-meta"><i class="bi bi-alphabet me-1"></i>'+(s.wordCount||0).toLocaleString('vi-VN')+' tu</div>'+
+    '</div>'
+  ).join('');
+}
+async function imgSelStory(id){
+  imgSelStoryId=id;
+  document.querySelectorAll('.isc').forEach(c=>c.classList.remove('sel'));
+  const c=document.getElementById('isc-'+id);if(c)c.classList.add('sel');
+  try{
+    const r=await AG('/api/stories/'+id+'?wordsPerEpisode=0');
+    if(!r.success)return;
+    imgSelStoryData=r;
+    const previewEl=document.getElementById('img-story-preview');
+    const titleEl=document.getElementById('img-story-preview-title');
+    if(titleEl)titleEl.textContent=r.title||'Nội dung truyện';
+    const txt=r.content||(r.episodes||[]).map(e=>e.content).join('\n\n')||'(Khong co noi dung)';
+    if(previewEl)previewEl.textContent=txt.slice(0,8000)+(txt.length>8000?'\n...[xem them]':'');
+    const ba=document.getElementById('btn-analyze-chars');if(ba)ba.disabled=false;
+    const bs=document.getElementById('btn-analyze-scenes');if(bs)bs.disabled=false;
+    (function(){const w=txt.trim().split(/\s+/).filter(Boolean).length;const m=Math.max(1,Math.round(w/3.1/60*10)/10);
+      const ti=document.getElementById('scene-target-count'),ai=document.getElementById('scene-audio-min'),h=document.getElementById('scene-est-hint');
+      if(ti)ti.value=Math.round(m*60/10);if(ai)ai.value=m;if(h)h.textContent='('+w+' từ)';})();
+    const cs=document.getElementById('char-analyze-st');if(cs)cs.textContent='Sẵn sàng phân tích ✓';
+    imgCharacters=[];imgScenes=[];
+    // ✅ Nạp lại ảnh đã tạo trước đó (lưu trong workspace/images/{storyId})
+    try{
+      const saved=await AG('/api/img/list/'+encodeURIComponent(id));
+      if(saved.success && imgSelStoryId===id){
+        imgCharacters=(saved.characters||[]).map(c=>({...c}));
+        imgScenes=(saved.scenes||[]).map(s=>({...s,approved:true,status:s.imgUrl?'done':'pending'}));
+      }
+    }catch(e){ console.error('Load saved images:',e); }
+    renderCharGrid();renderSceneGrid();
+    const bgc=document.getElementById('btn-gen-all-chars');if(bgc)bgc.disabled=imgCharacters.length===0;
+    const ba2=document.getElementById('btn-approve-all');if(ba2)ba2.disabled=imgScenes.length===0;
+    const bg2=document.getElementById('btn-gen-all-now');if(bg2)bg2.disabled=imgScenes.length===0;
+    const sc2=document.getElementById('scene-count-badge');if(sc2)sc2.textContent=imgScenes.length+' canh';
+    if(cs&&(imgCharacters.length||imgScenes.length))cs.textContent='Đã nạp '+imgCharacters.length+' nhân vật, '+imgScenes.length+' cảnh đã tạo ✓';
+  }catch(e){ toast('Lỗi tải truyện: '+e.message,'error'); }
+}
+
+function getArtStyle() {
+  const sel = document.getElementById('img-art-style');
+  return sel ? sel.value : (localStorage.getItem('img_art_style') || 'anime');
+}
+
+function onArtStyleChange() {
+  const val = getArtStyle();
+  localStorage.setItem('img_art_style', val);
+  const stMap = {
+    anime: 'Anime điện ảnh (Makoto Shinkai)',
+    hd: 'Ảnh HD chân thực (8K)',
+    anime2d: 'Hoạt hình 2D (cartoon)',
+    stickman: 'Người que (stick figure)',
+    ghibli: 'Ghibli màu nước',
+    webtoon: 'Webtoon / Manhwa',
+    pixar3d: '3D hoạt hình (Pixar)',
+    inkwash: 'Thủy mặc cổ phong',
+    manga: 'Manga đen trắng'
+  };
+  toast('Đã chọn: ' + (stMap[val] || val) + ' — Prompt mới sẽ tự động gắn style này', 'info');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const saved = localStorage.getItem('img_art_style');
+  const sel = document.getElementById('img-art-style');
+  if (saved && sel) sel.value = saved;
+});
+
+async function analyzeCharacters(){
+  if(!imgSelStoryData){toast('Chọn truyện trước','warn');return;}
+  const btn=document.getElementById('btn-analyze-chars');
+  const stEl=document.getElementById('char-analyze-st');
+  if(btn)btn.disabled=true;
+  if(btn)btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Dang phan tich...';
+  if(stEl)stEl.textContent='Gemini dang doc va phan tich nhan vat...';
+  try{
+    const content=imgSelStoryData.content||(imgSelStoryData.episodes||[]).map(e=>e.content).join('\n\n')||'';
+    const r=await AP('/api/img/analyze-characters',{storyId:imgSelStoryId,storyTitle:imgSelStoryData.title,content,style:getArtStyle()});
+    if(!r.success)throw new Error(r.error||'Phan tich that bai');
+    imgCharacters=r.characters||[];
+    renderCharGrid();
+    if(stEl)stEl.textContent='Tim thay '+imgCharacters.length+' nhan vat — Dang tu dong tao anh...';
+    const bg=document.getElementById('btn-gen-all-chars');if(bg)bg.disabled=true;
+    toast('Phân tích xong: '+imgCharacters.length+' nhân vật — Bắt đầu tạo ảnh tự động...','success');
+    // ✅ Tự động tạo ảnh tất cả nhân vật ngay sau khi phân tích
+    if(imgCharacters.length>0) await genAllCharImgs();
+    if(stEl)stEl.textContent='Hoàn thành: '+imgCharacters.length+' nhân vật đã có ảnh';
+  }catch(e){
+    if(stEl)stEl.textContent='Loi: '+e.message;
+    toast('Lỗi phân tích: '+e.message,'error');
+  }finally{
+    if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-person-bounding-box me-1"></i>Phan Tich Nhân Vật';}
+    const bg=document.getElementById('btn-gen-all-chars');if(bg)bg.disabled=imgCharacters.length===0;
+  }
+}
+function renderCharGrid(){
+  const el=document.getElementById('char-grid');
+  const badge=document.getElementById('char-count-badge');
+  if(badge)badge.textContent=imgCharacters.length;
+  if(!el)return;
+  if(!imgCharacters.length){
+    el.innerHTML='<div style="width:100%;display:flex;align-items:center;justify-content:center;color:var(--txm);font-size:.72rem;padding:20px;flex-direction:column;gap:6px"><i class="bi bi-person-plus" style="font-size:1.4rem;opacity:.2"></i><span>Chưa có nhân vật</span></div>';
+    return;
+  }
+  const esc=function(t){return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
+  el.innerHTML=imgCharacters.map(function(c,i){
+    const hasImg=!!c.imgUrl;
+    const tag=c.visualTag||'';
+    return '<div class="char-card '+(c.loading?'loading':'')+'" id="char-card-'+i+'">'+
+      '<div class="char-img-wrap">'+
+      (hasImg?'<img src="'+c.imgUrl+'" alt="'+esc(c.name)+'" onerror="this.style.display=\'none\'">':'')+
+      '<div class="char-gen-btn" onclick="genCharImg('+i+')" style="'+(hasImg||c.loading?'':'opacity:1;background:rgba(99,102,241,.12)')+'">'+
+      (c.loading?'<span class="spinner-border spinner-border-sm"></span><span>Đang tạo...</span>':'<i class="bi bi-magic" style="font-size:1rem"></i><span>'+(hasImg?'Tạo lại':'Tạo ảnh')+'</span>')+
+      '</div></div>'+
+      '<div class="char-info">'+
+      '<div class="char-name" title="'+esc(c.name)+'">'+esc(c.name)+'</div>'+
+      '<div class="char-role">'+esc(c.role||'')+(c.gender&&c.gender!=='unknown'?' · '+esc(c.gender):'')+(c.age?' · '+esc(c.age):'')+'</div>'+
+      '<div class="char-prompt-label"><i class="bi bi-image me-1" style="opacity:.5"></i>Prompt ảnh nhân vật (sửa rồi bấm Tạo lại)</div>'+
+      '<textarea class="char-prompt-ta" oninput="imgCharacters['+i+'].imagePrompt=this.value">'+esc(c.imagePrompt||'')+'</textarea>'+
+      '<div class="char-prompt-label"><i class="bi bi-pin-angle-fill me-1" style="opacity:.5"></i>Visual Tag — gắn vào MỌI cảnh có nhân vật này</div>'+
+      '<textarea class="char-prompt-ta" placeholder="Để trống = tự lấy từ prompt ảnh nhân vật" oninput="imgCharacters['+i+'].visualTag=this.value">'+esc(tag)+'</textarea>'+
+      '</div></div>';
+  }).join('');
+}
+async function genCharImg(idx){
+  const ch=imgCharacters[idx];if(!ch)return;
+  imgCharacters[idx].loading=true;renderCharGrid();
+  try{
+    const r=await AP('/api/img/gen-character',{character:ch,storyId:imgSelStoryId,style:getArtStyle()});
+    if(!r.success)throw new Error(r.error);
+    imgCharacters[idx].imgUrl=r.imgUrl;
+    imgCharacters[idx].loading=false;
+    renderCharGrid();
+    toast('Ảnh '+ch.name+' xong!','success');
+  }catch(e){
+    imgCharacters[idx].loading=false;renderCharGrid();
+    toast('Lỗi tạo ảnh: '+e.message,'error');
+  }
+}
+async function genAllCharImgs(){
+  const btn=document.getElementById('btn-gen-all-chars');
+  if(btn)btn.disabled=true;
+  for(let i=0;i<imgCharacters.length;i++){
+    await genCharImg(i);
+    await new Promise(r=>setTimeout(r,1500));
+  }
+  if(btn)btn.disabled=false;
+  toast('Tạo xong tất cả ảnh nhân vật!','success');
+}
+
+async function analyzeScenes(){
+  if(!imgSelStoryData){toast('Chọn truyện trước','warn');return;}
+  const content=imgSelStoryData.content||(imgSelStoryData.episodes||[]).map(e=>e.content).join('\n\n')||'';
+  // Ước tính thời lượng audio từ số từ (~3.1 từ/giây ≈ 2.800 từ → 15 phút) để user chỉnh lại theo audio thật
+  const words=content.trim().split(/\s+/).filter(Boolean).length;
+    const estSec=words/3.1;
+  const audioIn=parseFloat(document.getElementById('scene-audio-min')?.value);
+  const audioMin=audioIn>0?audioIn:Math.max(1,Math.round(estSec/60*10)/10);
+  const countIn=parseInt(document.getElementById('scene-target-count')?.value);
+  const targetScenes=countIn>0?Math.min(300,Math.max(5,countIn)):Math.round(audioMin*60/10);
+  const btn=document.getElementById('btn-analyze-scenes');
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Đang chia cảnh (có thể mất 1-3 phút)...';}
+  try{
+    const r=await AP('/api/img/analyze-scenes',{storyId:imgSelStoryId,storyTitle:imgSelStoryData.title,content,characters:imgCharacters,audioDurationSec:audioMin*60,targetScenes:targetScenes,style:getArtStyle()});
+    if(!r.success)throw new Error(r.error||'Phan tich canh that bai');
+    imgScenes=(r.scenes||[]).map((s,i)=>({...s,sceneIndex:i,approved:true,status:'pending',imgUrl:''})); // ✅ auto-approve tất cả
+    renderSceneGrid();
+    const ba=document.getElementById('btn-approve-all');if(ba)ba.disabled=imgScenes.length===0;
+    const bg=document.getElementById('btn-gen-all-now');if(bg)bg.disabled=imgScenes.length===0;
+    const sc=document.getElementById('scene-count-badge');if(sc)sc.textContent=imgScenes.length+' canh';
+    const fb=r.meta&&r.meta.fallbackCount?(' ('+r.meta.fallbackCount+' cảnh dùng prompt dự phòng)'):'';
+    toast('Phân tích xong: '+imgScenes.length+' cảnh cho '+audioMin+' phút audio'+fb+' — Bắt đầu tạo ảnh tự động...','success');
+    // ✅ Tự động tạo ảnh tất cả cảnh sau khi phân tích
+    if(imgScenes.length>0) await generateAllScenesNow();
+  }catch(e){
+    toast('Lỗi phân tích cảnh: '+e.message,'error');
+  }finally{
+    if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-stars me-1"></i>Phân Tích Cảnh';}
+  }
+}
+function fmtClock(sec){sec=Math.max(0,Math.round(sec||0));return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');}
+function renderSceneGrid(){
+  const el=document.getElementById('scene-grid');
+  if(!el)return;
+  if(!imgScenes.length){
+    el.innerHTML='<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--txm)"><i class="bi bi-image" style="font-size:2rem;opacity:.15;display:block;margin-bottom:8px"></i><div style="font-size:.74rem">Nh&#7845;n <b>Ph&#226;n T&#237;ch C&#7843;nh</b> &#273;&#7875; t&#7841;o danh s&#225;ch c&#7843;nh truy&#7879;n</div></div>';
+    return;
+  }
+  el.innerHTML=imgScenes.map(function(s,i){
+    const statusIcon=s.status==='done'
+      ?'<i class="bi bi-check-circle-fill" style="color:#34d399;font-size:.85rem"></i>'
+      :s.status==='generating'
+      ?'<span class="spinner-border spinner-border-sm text-warning" style="width:11px;height:11px"></span>'
+      :'';
+    const imgHtml=s.imgUrl
+      ?'<img class="scene-img" src="'+s.imgUrl+'" alt="C&#7843;nh '+(i+1)+'" onclick="window.open(this.src,\'_blank\')" onerror="this.style.display=\'none\'">'
+      :'<div class="scene-img-placeholder">'+(s.status==='generating'
+          ?'<span class="spinner-border spinner-border-sm text-warning"></span><span>&#272;ang t&#7841;o...</span>'
+          :'<i class="bi bi-image" style="font-size:1.3rem;opacity:.18"></i><span>Ch&#432;a c&#243; &#7843;nh</span>')+
+        '</div>';
+    const safePrompt=(s.prompt||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const safeDesc=(s.desc||'').replace(/</g,'&lt;');
+    const safeNarr=(s.narration||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return '<div class="scene-card '+(s.approved?'approved':'')+' '+(s.status==='done'||s.status==='generating'?s.status:'')+'" id="scene-card-'+i+'">'+
+      '<div class="scene-img-wrap">'+imgHtml+'</div>'+
+      '<div class="scene-body">'+
+      '<div class="scene-ep">C&#7843;nh '+(i+1)+' &#10022; '+(s.episodeTitle||s.title||'')+'</div>'+
+      '<div class="scene-desc">'+safeDesc+'</div>'+
+      (s.narration?'<div style="font-size:.62rem;color:var(--txm);margin:2px 0 4px;line-height:1.35;max-height:3.6em;overflow:hidden" title="'+safeNarr.replace(/"/g,'&quot;')+'"><i class="bi bi-mic-fill me-1" style="opacity:.5"></i>'+(s.durationSec?'<b>'+fmtClock(s.startSec)+' \u00b7 '+Math.round(s.durationSec)+'s</b> \u2014 ':'')+safeNarr.slice(0,160)+'</div>':'')+
+      '<div class="scene-prompt-label"><i class="bi bi-pencil-fill me-1" style="opacity:.5"></i>Prompt AI (c&#243; th&#7875; s&#7917;a tr&#7921;c ti&#7871;p, r&#7891;i Retry)</div>'+
+      '<textarea class="scene-prompt-ta" id="scene-prompt-'+i+'" oninput="imgScenes['+i+'].prompt=this.value">'+safePrompt+'</textarea>'+
+      '<div class="scene-footer">'+
+      '<button class="scene-approve-btn '+(s.approved?'approved':'pending')+'" onclick="toggleSceneApprove('+i+')">'+
+      (s.approved?'<i class="bi bi-check-circle-fill me-1"></i>&#272;&#227; duy&#7879;t':'<i class="bi bi-circle me-1"></i>Duy&#7879;t')+
+      '</button>'+
+      statusIcon+
+      '<button class="btic ms-auto" onclick="genOneScene('+i+')" title="T&#7841;o / t&#7841;o l&#7841;i &#7843;nh c&#7843;nh n&#224;y" style="width:30px;height:30px;color:var(--ac2)"><i class="bi bi-arrow-repeat"></i></button>'+
+      '</div></div></div>';
+  }).join('');
+  updateScenesBtns();
+}
+function updateScenesBtns(){
+  const approvedCount=imgScenes.filter(s=>s.approved).length;
+  const btn=document.getElementById('btn-gen-scenes');if(btn)btn.disabled=approvedCount===0;
+  const doneCount=imgScenes.filter(s=>s.status==='done'&&s.imgUrl).length;
+  const vBtn=document.getElementById('btn-scenes-to-video');if(vBtn)vBtn.disabled=doneCount===0;
+}
+function toggleSceneApprove(i){imgScenes[i].approved=!imgScenes[i].approved;renderSceneGrid();}
+function approveAllScenes(){
+  const allApproved=imgScenes.length>0&&imgScenes.every(s=>s.approved);
+  imgScenes.forEach(s=>s.approved=!allApproved);
+  renderSceneGrid();
+}
+async function genOneScene(i, isSequential, seqIndex){
+  const scene=imgScenes[i];if(!scene)return;
+  // Rate-limit do server tự xử lý theo từng provider (Cloudflare ~1s, Pollinations ~65s) nên client chỉ nghỉ ngắn
+  if(isSequential && seqIndex > 0) await new Promise(r=>setTimeout(r,300));
+  imgScenes[i].status='generating';renderSceneGrid();
+  try{
+    const r=await AP('/api/img/gen-scene',{scene,characters:imgCharacters,storyId:imgSelStoryId,sceneIndex:i,style:getArtStyle()});
+    if(!r.success)throw new Error(r.error);
+    imgScenes[i].imgUrl=r.imgUrl;
+    imgScenes[i].status='done';
+    renderSceneGrid();
+    toast('Cảnh '+(i+1)+' xong!','success');
+  }catch(e){
+    imgScenes[i].status='error';renderSceneGrid();
+    toast('Lỗi cảnh '+i+': '+e.message,'error');
+  }
+}
+async function runParallel(tasks, concurrency, onProgress){
+  let done=0, idx=0;
+  async function worker(){
+    while(idx<tasks.length){const cur=idx++;await tasks[cur]();done++;if(onProgress)onProgress(done,tasks.length);}
+  }
+  await Promise.all(Array.from({length:Math.min(concurrency,tasks.length)},worker));
+}
+async function generateApprovedScenes(){
+  const approved=imgScenes.map((s,i)=>({...s,i})).filter(s=>s.approved&&s.status!=='done');
+  if(!approved.length){toast('Không có cảnh nào được duyệt','warn');return;}
+  const btn=document.getElementById('btn-gen-scenes');
+  const prog=document.getElementById('scene-gen-progress');
+  if(btn)btn.disabled=true;if(prog)prog.style.display='';
+  toast('Đang tạo '+approved.length+' ảnh tuần tự (65s/ảnh vì rate limit)...','info');
+  for(let idx=0;idx<approved.length;idx++){
+    if(prog)prog.textContent=(idx+1)+'/'+approved.length+' ảnh';
+    await genOneScene(approved[idx].i, true, idx);
+  }
+  if(prog)prog.style.display='none';
+  if(btn)btn.disabled=imgScenes.filter(s=>s.approved&&s.status!=='done').length===0;
+  toast('Hoàn thành tạo ảnh!','success');
+}
+async function generateAllScenesNow(){
+  if(!imgScenes.length){toast('Phân tích cảnh trước!','warn');return;}
+  imgScenes.forEach(s=>{if(s.status!=='done')s.approved=true;});
+  renderSceneGrid();
+  const toGen=imgScenes.map((s,i)=>({...s,i})).filter(s=>s.status!=='done');
+  if(!toGen.length){toast('Tất cả ảnh đã được tạo rồi!','info');return;}
+  const btn=document.getElementById('btn-gen-all-now');
+  const prog=document.getElementById('scene-gen-progress');
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1" style="width:10px;height:10px"></span>Đang tạo...';}
+  if(prog){prog.style.display='';prog.textContent='0/'+toGen.length+' ảnh';}
+  toast('Đang tạo '+toGen.length+' ảnh tuần tự (server tự chờ rate-limit theo provider)...','info');
+  for(let idx=0;idx<toGen.length;idx++){
+    if(prog)prog.textContent=(idx+1)+'/'+toGen.length+' ảnh';
+    await genOneScene(toGen[idx].i, true, idx);
+  }
+  if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-lightning-charge-fill me-1"></i>Tạo Tất Cả Ngay';}
+  if(prog)prog.style.display='none';
+  toast('Hoàn thành tạo tất cả ảnh!','success');
+}
+
+function updateScenesToVideoBtn() {
+  const doneCount = imgScenes.filter(function(s){ return s.status==='done' && s.imgUrl; }).length;
+  const btn = document.getElementById('btn-scenes-to-video');
+  if (btn) btn.disabled = doneCount === 0;
+}
+
+// SINH VIDEO TU ANH CANH (Tab 3 -> Tab 4)
+async function imgScenestoVideo() {
+  const doneScenes = imgScenes.filter(s => s.status === 'done' && s.imgUrl);
+  if (!doneScenes.length) { toast('Chua co anh canh nao duoc tao. Hay tao anh truoc!', 'warn'); return; }
+  // Cảnh tạo từ "Phân Tích Cảnh" đã có durationSec khớp audio → không cần hỏi; chỉ hỏi khi thiếu timing
+  const hasTiming = doneScenes.every(function(s){ return s.durationSec > 0; });
+  let duration = 6;
+  if (!hasTiming) {
+    const durStr = prompt('Moi canh dai bao nhieu giay? (3-15)\nMac dinh: 6 giay', '6');
+    if (durStr === null) return;
+    duration = parseInt(durStr) || 6;
+  }
+  const isVertical = confirm('Video doc (9:16 - TikTok/Shorts)?\nNhan OK = Doc | Cancel = Ngang (16:9)');
+  const btn = document.getElementById('btn-scenes-to-video');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" style="width:10px;height:10px"></span>Dang tao clip...';
+  const totalSec = doneScenes.reduce(function(a, s){ return a + (s.durationSec > 0 ? s.durationSec : duration); }, 0);
+  toast('Dang tao ' + doneScenes.length + ' clip video (tong ~' + fmtClock(totalSec) + ' phut)...', 'info');
+  const scenes = doneScenes.map(function(s, i) {
+    return {
+      sceneIndex: typeof s.sceneIndex !== 'undefined' ? s.sceneIndex : (s.index || i),
+      imgUrl: s.imgUrl,
+      desc: s.desc || s.episodeTitle || ('Canh ' + (i+1)),
+      filename: s.filename || '',
+      durationSec: s.durationSec || 0,
+    };
+  });
+  try {
+    const r = await AP('/api/img/to-video', { storyId: imgSelStoryId, scenes: scenes, duration: duration, isVertical: isVertical });
+    if (!r.success) throw new Error(r.error || 'Loi tao video');
+    const doneCount = r.doneCount || 0;
+    const total = r.total || scenes.length;
+    toast('Da tao ' + doneCount + '/' + total + ' clip' + (r.full ? ' + video FULL ' + fmtClock(r.full.durationSec) + ' phut' : '') + '! Dang chuyen sang Tab Video Nen...', 'success');
+    if (r.full) log('Video FULL (ghep tat ca canh, khong tieng): ' + r.full.filename + ' (' + r.full.sizeMB + ' MB) | Clip le trong workspace/downloads/' + r.clipsDir, 'success');
+    const doneList = (r.results || []).filter(function(x){ return x.status === 'done'; });
+    if (doneList.length) {
+      log('Tao ' + doneList.length + ' clip thanh cong: ' + doneList.map(function(x){ return x.filename + ' (' + x.sizeMB + ' MB)'; }).join(', '), 'success');
+    }
+    await new Promise(function(res){ setTimeout(res, 500); });
+    ST('bgvideo');
+    await loadBg();
+  } catch(e) {
+    toast('Loi tao video: ' + e.message, 'error');
+  } finally {
+    const done2 = imgScenes.filter(function(s){ return s.status==='done' && s.imgUrl; }).length;
+    btn.disabled = done2 === 0;
+    btn.innerHTML = '<i class="bi bi-film me-1"></i>Sinh Video';
+  }
+}
+
 </script>
 </body>
 </html>

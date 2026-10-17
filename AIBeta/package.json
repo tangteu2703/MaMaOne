@@ -5,6 +5,7 @@
   "main": "pipeline.js",
   "type": "commonjs",
   "scripts": {
+    "predev": "node -e \"try{const {execSync}=require('child_process');if(process.platform==='win32'){const o=execSync('netstat -ano | findstr :3000',{stdio:['pipe','pipe','ignore']}).toString();o.split('\\n').forEach(l=>{const p=l.trim().split(/\\s+/);if(p.length>=5&&p[1].endsWith(':3000')&&p[3]==='LISTENING'){const pid=parseInt(p[4]);if(pid&&pid!==process.pid){try{process.kill(pid)}catch(_){execSync('taskkill /F /PID '+pid,{stdio:'ignore'})}}}})}}catch(_){}\"",
     "dev": "node server.js",
     "start": "node scheduler.js",
     "run-now": "node pipeline.js",

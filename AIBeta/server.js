@@ -1783,28 +1783,97 @@ app.get('/api/zerotts/status', async (req, res) => {
 // TAB 3: TẠO ẢNH API – Character & Scene Image Generation
 // ══════════════════════════════════════════════════════════════
 
-// Helper: download image from URL to local path
-async function downloadImageToLocal(imageUrl, localPath) {
+// Helper: download image from URL to local path (hỗ trợ retry & rate-limit)
+async function downloadImageToLocal(imageUrl, localPath, maxRetries = 3) {
   const http = require('http');
   const https = require('https');
-  return new Promise((resolve, reject) => {
-    const file = require('fs').createWriteStream(localPath);
-    const client = imageUrl.startsWith('https') ? https : http;
-    client.get(imageUrl, (response) => {
-      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-        return downloadImageToLocal(response.headers.location, localPath).then(resolve).catch(reject);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await new Promise((resolve, reject) => {
+        const file = fs.createWriteStream(localPath);
+        const client = imageUrl.startsWith('https') ? https : http;
+        const req = client.get(imageUrl, {
+          agent: new https.Agent({ rejectUnauthorized: false }),
+          timeout: 60000
+        }, (response) => {
+          if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+            file.close();
+            return downloadImageToLocal(response.headers.location, localPath, maxRetries).then(resolve).catch(reject);
+          }
+          if (response.statusCode === 429) {
+            file.close();
+            fs.unlink(localPath, () => {});
+            const err = new Error('HTTP 429 Rate Limit');
+            err.isRateLimit = true;
+            return reject(err);
+          }
+          if (response.statusCode === 402) {
+            file.close();
+            fs.unlink(localPath, () => {});
+            return reject(new Error('HTTP 402'));
+          }
+          if (response.statusCode !== 200) {
+            file.close();
+            fs.unlink(localPath, () => {});
+            return reject(new Error('HTTP ' + response.statusCode));
+          }
+          response.pipe(file);
+          file.on('finish', () => file.close(() => resolve(localPath)));
+        });
+        req.on('error', (err) => {
+          file.close();
+          fs.unlink(localPath, () => {});
+          reject(err);
+        });
+        req.on('timeout', () => {
+          req.destroy(new Error('Download timeout'));
+        });
+      });
+      return localPath;
+    } catch (err) {
+      if (err.isRateLimit && attempt < maxRetries) {
+        logger.warn('ImgAPI', `Pollinations bị rate limit (429), chờ 65s rồi thử lại... (${attempt}/${maxRetries})`);
+        await sleep(65000);
+        continue;
       }
-      if (response.statusCode !== 200) {
-        return reject(new Error('HTTP ' + response.statusCode));
-      }
-      response.pipe(file);
-      file.on('finish', () => file.close(() => resolve(localPath)));
-    }).on('error', (err) => {
-      require('fs').unlink(localPath, () => {});
-      reject(err);
-    });
-  });
+      if (attempt >= maxRetries) throw err;
+      await sleep(2000);
+    }
+  }
 }
+
+// Khởi tạo các module tạo ảnh đa nguồn và quản lý phong cách vẽ
+const imageStyles = require('./src/imageGen/styles');
+const imageProviders = require('./src/imageGen/providers');
+imageProviders.init({ downloadImageToLocal });
+
+// Load prompt templates từ config/prompts.md
+const PROMPTS_FILE = path.join(__dirname, 'config', 'prompts.md');
+let PROMPTS = {};
+
+function loadPrompts() {
+  try {
+    if (!fs.existsSync(PROMPTS_FILE)) return;
+    const pContent = fs.readFileSync(PROMPTS_FILE, 'utf8');
+    const sections = pContent.split(/\n(?=##\s+)/);
+    const parsed = {};
+    for (const sec of sections) {
+      const titleMatch = sec.match(/^##\s+.*?`([^`]+)`/m) || sec.match(/^##\s+\d+\.\s+([^\n(]+)/m);
+      const codeMatch = sec.match(/```(?:\w+)?\n([\s\S]*?)\n```/);
+      if (titleMatch && codeMatch) {
+        const key = titleMatch[1].trim();
+        parsed[key] = codeMatch[1].trim();
+      }
+    }
+    PROMPTS = parsed;
+    logger.success('Prompts', `Đã load ${Object.keys(PROMPTS).length} prompt từ prompts.md: ${Object.keys(PROMPTS).join(', ')}`);
+  } catch (e) {
+    logger.warn('Prompts', 'Lỗi đọc prompts.md: ' + e.message);
+  }
+}
+loadPrompts();
+imageProviders.logStatus();
 
 // Helper: gọi Gemini với auto retry + key rotation
 async function callGeminiForImage(prompt) {
@@ -1813,7 +1882,7 @@ async function callGeminiForImage(prompt) {
   if (!apiKey) throw new Error('Không có Gemini API key');
   const genAI = new GoogleGenerativeAI(apiKey);
   const requestOptions = { apiVersion: 'v1beta' };
-  const models = ['gemini-flash-latest', 'gemini-3.5-flash', 'gemini-2.5-flash'];
+  const models = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
   for (const modelName of models) {
     try {
       const model = genAI.getGenerativeModel({ model: modelName }, requestOptions);
@@ -1828,49 +1897,66 @@ async function callGeminiForImage(prompt) {
   }
 }
 
+// GET /api/img/styles - Lấy danh sách phong cách vẽ
+app.get('/api/img/styles', (req, res) => {
+  res.json({ success: true, styles: imageStyles.listStyles(), defaultStyle: imageStyles.DEFAULT_STYLE });
+});
+
+// GET /api/img/providers - Lấy trạng thái các provider ảnh
+app.get('/api/img/providers', (req, res) => {
+  res.json({ success: true, providers: imageProviders.getStatus() });
+});
+
 // POST /api/img/analyze-characters
-// Phân tích nhân vật từ nội dung truyện bằng Gemini
 app.post('/api/img/analyze-characters', async (req, res) => {
   try {
-    const { storyTitle, content } = req.body;
+    const { storyTitle, content, style } = req.body;
     if (!content) return res.json({ success: false, error: 'Không có nội dung truyện' });
 
-    const storySnippet = content.slice(0, 6000); // Giới hạn để tránh tốn token
+    const selectedStyle = imageStyles.getStyle(style);
+    const storySnippet = content.slice(0, 6000);
 
-    const prompt = `Bạn là chuyên gia phân tích nhân vật trong văn học. Hãy đọc đoạn truyện sau và trích xuất TẤT CẢ nhân vật quan trọng.
-
-TRUYỆN: "${storyTitle}"
+    const tpl = PROMPTS['analyze_characters'] || `Bạn là chuyên gia phân tích nhân vật trong văn học. Hãy đọc đoạn truyện sau và trích xuất TẤT CẢ nhân vật quan trọng.
+TRUYỆN: "{{STORY_TITLE}}"
 NỘI DUNG:
-${storySnippet}
-
-Trả về JSON array (KHÔNG có markdown, chỉ JSON thuần):
+{{STORY_CONTENT}}
+Trả về JSON array:
 [
   {
-    "name": "Tên nhân vật (đầy đủ, rõ ràng)",
-    "role": "Vai trò (Nhân vật chính / Nhân vật phụ / Phản diện / ...)",
-    "gender": "male / female / unknown",
-    "age": "Tuổi ước tính hoặc mô tả (trẻ em / thanh niên / trung niên / lớn tuổi)",
-    "appearance": "Mô tả ngoại hình chi tiết bằng tiếng Anh: màu tóc, kiểu tóc, màu mắt, chiều cao, vóc dáng, trang phục đặc trưng, đặc điểm nhận dạng nổi bật",
+    "name": "Tên nhân vật",
+    "role": "Nhân vật chính / Nhân vật phụ",
+    "gender": "male / female",
+    "age": "tuổi ước tính",
+    "appearance": "Mô tả ngoại hình tiếng Anh",
     "personality": "Tính cách ngắn gọn",
-    "imagePrompt": "English prompt để generate portrait: [gender] [age] [appearance details], [setting/background hint], anime/realistic style, high quality portrait, detailed face"
+    "imagePrompt": "English portrait prompt"
   }
-]
+]`;
 
-Chỉ trả về JSON array, không giải thích thêm.`;
+    const prompt = tpl
+      .replace('{{STORY_TITLE}}', storyTitle || 'Truyện')
+      .replace('{{STORY_CONTENT}}', storySnippet)
+      + `\n\nLƯU Ý PHONG CÁCH HÌNH ẢNH: Tất cả nhân vật phải phù hợp với phong cách "${selectedStyle.label}" (${selectedStyle.prefix}).`;
 
     const responseText = await callGeminiForImage(prompt);
-    // Parse JSON từ response
     let characters = [];
     try {
       const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        characters = JSON.parse(jsonMatch[0]);
-      }
+      if (jsonMatch) characters = JSON.parse(jsonMatch[0]);
     } catch (pe) {
       logger.warn('ImgAPI', 'Parse JSON nhân vật lỗi: ' + pe.message);
     }
 
-    logger.success('ImgAPI', `Phân tích xong: ${characters.length} nhân vật trong "${storyTitle}"`);
+    characters = characters.map(c => {
+      const basePrompt = c.imagePrompt || `${c.gender || 'person'} character portrait, ${c.appearance || c.name}`;
+      return {
+        ...c,
+        style: selectedStyle.id,
+        imagePrompt: imageStyles.applyStyle(basePrompt, selectedStyle.id)
+      };
+    });
+
+    logger.success('ImgAPI', `Phân tích xong: ${characters.length} nhân vật trong "${storyTitle}" (Style: ${selectedStyle.label})`);
     res.json({ success: true, characters });
   } catch (e) {
     logger.error('ImgAPI', 'analyze-characters lỗi: ' + e.message);
@@ -1879,54 +1965,45 @@ Chỉ trả về JSON array, không giải thích thêm.`;
 });
 
 // POST /api/img/analyze-scenes
-// Phân tích và chia cảnh từ truyện, tạo prompt nhất quán với nhân vật
 app.post('/api/img/analyze-scenes', async (req, res) => {
   try {
-    const { storyTitle, content, characters } = req.body;
+    const { storyTitle, content, characters, audioDurationSec, targetScenes, style } = req.body;
     if (!content) return res.json({ success: false, error: 'Không có nội dung truyện' });
 
-    // Build character reference string
+    const selectedStyle = imageStyles.getStyle(style);
     const charRef = (characters || []).map(c =>
       `- ${c.name} (${c.role}): ${c.appearance || c.imagePrompt || ''}`
     ).join('\n');
 
     const storySnippet = content.slice(0, 8000);
+    const tpl = PROMPTS['analyze_scenes'] || `You are a professional AI art director. Story: "{{STORY_TITLE}}". Content: {{STORY_CONTENT}}. Character ref: {{CHARACTER_REF}}. Return JSON array of 6-12 scenes.`;
 
-    const prompt = `Bạn là đạo diễn nghệ thuật AI. Hãy phân tích truyện sau và chia thành các cảnh quan trọng để vẽ minh họa.
-
-TRUYỆN: "${storyTitle}"
-
-NHÂN VẬT (giữ nhất quán):
-${charRef || 'Chưa có thông tin nhân vật'}
-
-NỘI DUNG TRUYỆN:
-${storySnippet}
-
-Hãy chia thành 6-12 cảnh quan trọng nhất. Trả về JSON array (KHÔNG có markdown):
-[
-  {
-    "index": 1,
-    "episodeTitle": "Tên cảnh ngắn gọn (tiếng Việt)",
-    "desc": "Mô tả ngắn cảnh này xảy ra gì (tiếng Việt, 1-2 câu)",
-    "characters_in_scene": ["Tên nhân vật xuất hiện trong cảnh"],
-    "prompt": "English Pollinations.ai image prompt: [scene description], [character appearances consistent with above], [mood/lighting], [art style: anime illustration / realistic / cinematic], ultra detailed, high quality"
-  }
-]
-
-Đảm bảo: prompt tiếng Anh, nhân vật NHẤT QUÁN với mô tả đã cho, không thay đổi ngoại hình giữa các cảnh.`;
+    const prompt = tpl
+      .replace('{{STORY_TITLE}}', storyTitle || 'Truyện')
+      .replace('{{CHARACTER_REF}}', charRef || 'Chưa có thông tin nhân vật')
+      .replace('{{STORY_CONTENT}}', storySnippet)
+      + `\n\nIMPORTANT ART STYLE INSTRUCTION: All scenes MUST strictly follow the art style "${selectedStyle.label}" (${selectedStyle.prefix}).`;
 
     const responseText = await callGeminiForImage(prompt);
     let scenes = [];
     try {
       const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        scenes = JSON.parse(jsonMatch[0]);
-      }
+      if (jsonMatch) scenes = JSON.parse(jsonMatch[0]);
     } catch (pe) {
       logger.warn('ImgAPI', 'Parse JSON cảnh lỗi: ' + pe.message);
     }
 
-    logger.success('ImgAPI', `Phân tích xong: ${scenes.length} cảnh trong "${storyTitle}"`);
+    scenes = scenes.map((s, i) => {
+      const basePrompt = s.prompt || `${s.desc}, detailed illustration, high quality`;
+      return {
+        ...s,
+        index: typeof s.index !== 'undefined' ? s.index : i + 1,
+        style: selectedStyle.id,
+        prompt: imageStyles.applyStyle(basePrompt, selectedStyle.id)
+      };
+    });
+
+    logger.success('ImgAPI', `Phân tích xong: ${scenes.length} cảnh trong "${storyTitle}" (Style: ${selectedStyle.label})`);
     res.json({ success: true, scenes });
   } catch (e) {
     logger.error('ImgAPI', 'analyze-scenes lỗi: ' + e.message);
@@ -1935,28 +2012,27 @@ Hãy chia thành 6-12 cảnh quan trọng nhất. Trả về JSON array (KHÔNG 
 });
 
 // POST /api/img/gen-character
-// Tạo ảnh chân dung nhân vật qua Pollinations.ai
 app.post('/api/img/gen-character', async (req, res) => {
   try {
-    const { character, storyId } = req.body;
+    const { character, storyId, style } = req.body;
     if (!character) return res.json({ success: false, error: 'Thiếu thông tin nhân vật' });
 
-    const prompt = character.imagePrompt || `${character.gender || 'person'} character portrait, ${character.appearance || character.name}, anime style, detailed face, high quality, white background`;
-    const seed = Math.floor(Math.random() * 900000) + 100000;
-    const encodedPrompt = encodeURIComponent(prompt);
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=768&seed=${seed}&model=flux-realism&nologo=true`;
+    const styleId = style || character.style || imageStyles.DEFAULT_STYLE;
+    let prompt = character.imagePrompt || `${character.gender || 'person'} character portrait, ${character.appearance || character.name}`;
+    prompt = imageStyles.applyStyle(prompt, styleId);
 
-    // Download to local
     const downloadsDir = config.paths.downloads || path.join(__dirname, 'workspace', 'downloads');
     if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
+
+    const seed = Math.floor(Math.random() * 900000) + 100000;
     const safeName = (character.name || 'char').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20);
     const localFileName = `char_${safeName}_${seed}.jpg`;
     const localPath = path.join(downloadsDir, localFileName);
 
-    await downloadImageToLocal(imageUrl, localPath);
+    const result = await imageProviders.generateImage(prompt, localPath, 512, 768);
 
-    logger.success('ImgAPI', `Ảnh nhân vật "${character.name}" OK: ${localFileName}`);
-    res.json({ success: true, imgUrl: `/downloads/${localFileName}`, localPath });
+    logger.success('ImgAPI', `Ảnh nhân vật "${character.name}" OK [${result.provider}]: ${localFileName}`);
+    res.json({ success: true, imgUrl: `/downloads/${localFileName}`, localPath, provider: result.provider });
   } catch (e) {
     logger.error('ImgAPI', 'gen-character lỗi: ' + e.message);
     res.json({ success: false, error: e.message });
@@ -1964,13 +2040,12 @@ app.post('/api/img/gen-character', async (req, res) => {
 });
 
 // POST /api/img/gen-scene
-// Tạo ảnh cảnh truyện qua Pollinations.ai (với character consistency)
 app.post('/api/img/gen-scene', async (req, res) => {
   try {
-    const { scene, characters, storyId, sceneIndex } = req.body;
+    const { scene, characters, storyId, sceneIndex, style } = req.body;
     if (!scene) return res.json({ success: false, error: 'Thiếu thông tin cảnh' });
 
-    // Build character consistency suffix
+    const styleId = style || scene.style || imageStyles.DEFAULT_STYLE;
     const sceneChars = (scene.characters_in_scene || []);
     const charDetails = (characters || [])
       .filter(c => sceneChars.includes(c.name))
@@ -1978,39 +2053,237 @@ app.post('/api/img/gen-scene', async (req, res) => {
       .filter(Boolean)
       .join(', ');
 
-    let finalPrompt = scene.prompt || `${scene.desc}, detailed illustration, high quality`;
+    let basePrompt = scene.prompt || scene.desc || 'detailed illustration, high quality';
     if (charDetails) {
-      finalPrompt += `, consistent character: ${charDetails.slice(0, 200)}`;
+      basePrompt += `, consistent character: ${charDetails.slice(0, 200)}`;
     }
-    finalPrompt += ', cinematic lighting, ultra detailed';
-
-    const seed = Math.floor(Math.random() * 900000) + 100000;
-    const encodedPrompt = encodeURIComponent(finalPrompt);
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=576&seed=${seed}&model=flux-realism&nologo=true&enhance=true`;
+    const finalPrompt = imageStyles.applyStyle(basePrompt, styleId);
 
     const downloadsDir = config.paths.downloads || path.join(__dirname, 'workspace', 'downloads');
     if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
-    const localFileName = `scene_${storyId || 'story'}_${sceneIndex || 0}_${seed}.jpg`;
+
+    const seed = Math.floor(Math.random() * 900000) + 100000;
+    const safeStory = (storyId || 'story').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+    const localFileName = `scene_${safeStory}_${sceneIndex || 0}_${seed}.jpg`;
     const localPath = path.join(downloadsDir, localFileName);
 
-    await downloadImageToLocal(imageUrl, localPath);
+    const result = await imageProviders.generateImage(finalPrompt, localPath, 1024, 576);
 
-    logger.success('ImgAPI', `Ảnh cảnh ${(sceneIndex||0)+1} OK: ${localFileName}`);
-    res.json({ success: true, imgUrl: `/downloads/${localFileName}`, localPath });
+    logger.success('ImgAPI', `Ảnh cảnh ${(sceneIndex || 0) + 1} OK [${result.provider}]: ${localFileName}`);
+    res.json({ success: true, imgUrl: `/downloads/${localFileName}`, localPath, provider: result.provider });
   } catch (e) {
     logger.error('ImgAPI', 'gen-scene lỗi: ' + e.message);
     res.json({ success: false, error: e.message });
   }
 });
 
+// POST /api/img/to-video - Chuyển danh sách ảnh cảnh thành video clip
+app.post('/api/img/to-video', async (req, res) => {
+  try {
+    const { storyId, scenes, duration = 6, isVertical = false } = req.body;
+    if (!scenes || !Array.isArray(scenes) || scenes.length === 0) {
+      return res.status(400).json({ success: false, error: 'Cần ít nhất 1 ảnh cảnh để tạo video' });
+    }
 
-server.listen(PORT, () => {
-  console.log('\n' + 'â•'.repeat(60));
-  console.log(`ðŸ–¥ï¸   WEB DASHBOARD Sáº´N SÃ€NG Táº I: http://localhost:${PORT}`);
-  console.log('â•'.repeat(60) + '\n');
-  logger.success('Server', `Má»Ÿ trÃ¬nh duyá»‡t truy cáº­p: http://localhost:${PORT}`);
+    const width  = isVertical ? 1080 : 1920;
+    const height = isVertical ? 1920 : 1080;
+    const clipDuration = Math.max(3, Math.min(15, parseInt(duration) || 6));
+    const totalFrames = clipDuration * 25;
+
+    const { exec: execCmd } = require('child_process');
+    const util = require('util');
+    const execAsync = util.promisify(execCmd);
+
+    const results = [];
+    const safeStoryId = (storyId || 'story').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+    const downloadsDir = config.paths.downloads || path.join(__dirname, 'workspace', 'downloads');
+    if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
+
+    for (const scene of scenes) {
+      const sIdx = scene.sceneIndex || 0;
+      let imgPath = null;
+
+      if (scene.imgUrl && scene.imgUrl.startsWith('/downloads/')) {
+        imgPath = path.join(downloadsDir, scene.imgUrl.replace('/downloads/', ''));
+      } else if (scene.localPath && fs.existsSync(scene.localPath)) {
+        imgPath = scene.localPath;
+      } else if (scene.filename) {
+        imgPath = path.join(downloadsDir, scene.filename);
+      }
+
+      if (!imgPath || !fs.existsSync(imgPath)) {
+        logger.warn('ImgToVideo', `Ảnh cảnh ${sIdx} không tìm thấy: ${imgPath || scene.imgUrl}`);
+        results.push({ sceneIndex: sIdx, status: 'error', error: 'Không tìm thấy file ảnh' });
+        continue;
+      }
+
+      const clipName = `story_${safeStoryId}_scene${sIdx}_${Date.now()}.mp4`;
+      const clipPath = path.join(downloadsDir, clipName);
+      const escapedImg = imgPath.replace(/\\/g, '/');
+
+      const zoomDir = sIdx % 2 === 0
+        ? `zoompan=z='min(zoom+0.0015,1.2)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`
+        : `zoompan=z='if(lte(zoom,1.0),1.2,max(1.0,zoom-0.0015))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`;
+
+      const cmd = [
+        `"${config.paths.ffmpeg}"`,
+        '-loop', '1',
+        '-i', `"${escapedImg}"`,
+        '-vf', `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},${zoomDir}:d=${totalFrames}:s=${width}x${height}`,
+        '-c:v', 'libx264',
+        '-pix_fmt', 'yuv420p',
+        '-preset', 'fast',
+        '-t', `${clipDuration}`,
+        '-an',
+        '-y',
+        `"${clipPath}"`
+      ].join(' ');
+
+      try {
+        logger.info('ImgToVideo', `Đang tạo clip cảnh ${sIdx}: ${clipName} (${clipDuration}s)...`);
+        await execAsync(cmd, { timeout: 120000 });
+
+        if (!fs.existsSync(clipPath)) throw new Error('FFmpeg không tạo được file');
+
+        const sizeMB = (fs.statSync(clipPath).size / 1024 / 1024).toFixed(2);
+        results.push({
+          sceneIndex: sIdx,
+          status: 'done',
+          filename: clipName,
+          url: `/downloads/${clipName}`,
+          sizeMB,
+          desc: (scene.desc || '').slice(0, 80),
+        });
+        logger.success('ImgToVideo', `✅ Clip cảnh ${sIdx} xong: ${clipName} (${sizeMB} MB)`);
+      } catch (ffErr) {
+        logger.warn('ImgToVideo', `ZoomPan lỗi cảnh ${sIdx}, dùng fallback... ${ffErr.message}`);
+        const simpleCmd = [
+          `"${config.paths.ffmpeg}"`,
+          '-loop', '1',
+          '-i', `"${escapedImg}"`,
+          '-vf', `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`,
+          '-c:v', 'libx264',
+          '-pix_fmt', 'yuv420p',
+          '-preset', 'fast',
+          '-t', `${clipDuration}`,
+          '-an', '-y',
+          `"${clipPath}"`
+        ].join(' ');
+        try {
+          await execAsync(simpleCmd, { timeout: 60000 });
+          const sizeMB = fs.existsSync(clipPath) ? (fs.statSync(clipPath).size / 1024 / 1024).toFixed(2) : '0';
+          results.push({ sceneIndex: sIdx, status: 'done', filename: clipName, url: `/downloads/${clipName}`, sizeMB, desc: (scene.desc || '').slice(0, 80) });
+          logger.success('ImgToVideo', `✅ Clip fallback cảnh ${sIdx} xong`);
+        } catch (e2) {
+          results.push({ sceneIndex: sIdx, status: 'error', error: e2.message });
+        }
+      }
+    }
+
+    const doneCount = results.filter(r => r.status === 'done').length;
+    logger.success('ImgToVideo', `Hoàn thành: ${doneCount}/${scenes.length} clip video từ ảnh cảnh`);
+    res.json({ success: true, results, doneCount, total: scenes.length });
+  } catch (e) {
+    logger.error('ImgToVideo', 'Lỗi /api/img/to-video: ' + e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
+// GET /api/img/list/:storyId - Danh sách ảnh đã tạo của truyện
+app.get('/api/img/list/:storyId', (req, res) => {
+  try {
+    const { storyId } = req.params;
+    const safeStory = (storyId || 'story').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+    const downloadsDir = config.paths.downloads || path.join(__dirname, 'workspace', 'downloads');
+    if (!fs.existsSync(downloadsDir)) return res.json({ success: true, characters: [], scenes: [] });
 
+    const files = fs.readdirSync(downloadsDir);
+    const characters = [];
+    const scenes = [];
 
+    files.forEach(f => {
+      if (f.startsWith(`scene_${safeStory}_`) && f.endsWith('.jpg')) {
+        const parts = f.replace('.jpg', '').split('_');
+        const idx = parseInt(parts[2], 10);
+        scenes.push({
+          sceneIndex: isNaN(idx) ? 0 : idx,
+          imgUrl: `/downloads/${f}`,
+          filename: f
+        });
+      } else if (f.startsWith('char_') && f.endsWith('.jpg')) {
+        characters.push({
+          name: f.replace('char_', '').split('_')[0],
+          imgUrl: `/downloads/${f}`,
+          filename: f
+        });
+      }
+    });
+
+    scenes.sort((a, b) => a.sceneIndex - b.sceneIndex);
+    res.json({ success: true, characters, scenes });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// SERVER LISTEN & PORT RELEASE (CHỐNG LỖI EADDRINUSE)
+// ══════════════════════════════════════════════════════════════
+
+function freePort(port) {
+  try {
+    const { execSync } = require('child_process');
+    if (process.platform === 'win32') {
+      const out = execSync(`netstat -ano | findstr :${port}`, { stdio: ['pipe', 'pipe', 'ignore'] }).toString();
+      const lines = out.split('\n');
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 5 && parts[1].endsWith(`:${port}`) && parts[3] === 'LISTENING') {
+          const pid = parseInt(parts[4], 10);
+          if (pid && pid !== process.pid) {
+            try {
+              process.kill(pid, 'SIGKILL');
+            } catch (_) {
+              try { execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' }); } catch (__) {}
+            }
+          }
+        }
+      }
+    } else {
+      execSync(`lsof -ti tcp:${port} | xargs kill -9`, { stdio: 'ignore' });
+    }
+  } catch (_) {}
+}
+
+function onServerListening() {
+  console.log('\n' + '═'.repeat(60));
+  console.log(`🖥️   WEB DASHBOARD SẴN SÀNG TẠI: http://localhost:${PORT}`);
+  console.log('═'.repeat(60) + '\n');
+  logger.success('Server', `Mở trình duyệt truy cập: http://localhost:${PORT}`);
+}
+
+// Bắt lỗi WSS để không crash tiến trình khi port bị trùng
+wss.on('error', (err) => {
+  if (err && err.code !== 'EADDRINUSE') {
+    logger.error('WebSocket', 'WSS error: ' + err.message);
+  }
+});
+
+// Bắt lỗi Server HTTP: tự động giải phóng port và retry
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    logger.warn('Server', `Cổng ${PORT} đang bị chiếm dụng. Đang tự động giải phóng...`);
+    freePort(PORT);
+    setTimeout(() => {
+      try { server.close(); } catch (_) {}
+      server.listen(PORT, onServerListening);
+    }, 1000);
+    return;
+  }
+  logger.error('Server', 'Lỗi Server: ' + err.message);
+});
+
+// Giải phóng cổng 3000 trước khi listen
+freePort(PORT);
+server.listen(PORT, onServerListening);
 
