@@ -1,10 +1,12 @@
 /**
  * Image Provider Scheduler
- *  - Tier 1: Cloudflare Workers AI (FLUX-schnell), nhiều tài khoản xoay tua (CF_ACCOUNT_ID[_2..], CF_API_TOKEN[_2..]).
- *            Free ~10.000 neurons/ngày/tài khoản (~100 ảnh). Luôn ưu tiên khi còn quota.
- *  - Tier 2: khi mọi Cloudflare hết quota → chạy SONG SONG Pollinations (giới hạn ~65s/ảnh)
- *            + Google Flow (nhiều model xoay vòng). Mỗi request được giao cho provider rảnh/sẵn sàng sớm nhất
- *            nên chu kỳ không bị kẹt ở 1 provider.
+ *  - Thứ tự ưu tiên cấu hình bằng IMAGE_PROVIDER_ORDER (mặc định: cloudflare,flow,pollinations).
+ *    Mỗi loại provider là 1 tier; luôn dùng tier thấp nhất còn khả dụng (không cooldown).
+ *  - Cloudflare Workers AI (FLUX-schnell), nhiều tài khoản xoay tua (CF_ACCOUNT_ID[_2..], CF_API_TOKEN[_2..]).
+ *            Free ~10.000 neurons/ngày/tài khoản (~100 ảnh). Hết quota ngày → nghỉ đến 07:00 VN.
+ *  - Google Flow (nhiều model xoay vòng, dùng chung 1 tab trình duyệt).
+ *  - Pollinations (giới hạn ~65s/ảnh) — dự phòng cuối.
+ *  Khi tier hiện tại đang bận → chờ (không tràn sang tier thấp ưu tiên hơn); khi cooldown/lỗi → tự chuyển tier kế tiếp.
  */
 const fs = require('fs');
 const axios = require('axios');
@@ -28,7 +30,7 @@ function buildProviders() {
     if (accountId && token) {
       list.push({
         id: `cloudflare_${i + 1}`, kind: 'cloudflare', tier: 1,
-        name: `Cloudflare FLUX-schnell #${i + 1}`,
+        name: `Cloudflare FLUX-schnell #${i + 1}`, model: 'flux-1-schnell',
         accountId, token, rateDelayMs: 1000, cooldownMs: 60000,
       });
     }
@@ -52,11 +54,20 @@ function buildProviders() {
     }));
   }
 
+  // Thứ tự ưu tiên: vị trí của kind trong IMAGE_PROVIDER_ORDER → tier (1 = ưu tiên cao nhất)
+  const order = getOrder();
   list.forEach(p => {
+    const idx = order.indexOf(p.kind);
+    p.tier = (idx >= 0 ? idx : order.length) + 1;
     p.enabled = true; p.failCount = 0; p.lastFailed = 0; p.lastUsedMs = 0; p.busy = false;
     p.baseCooldownMs = p.cooldownMs; p.okCount = 0;
   });
   return list;
+}
+
+function getOrder() {
+  return String(process.env.IMAGE_PROVIDER_ORDER || 'cloudflare,flow,pollinations')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 }
 
 let providers = buildProviders();
@@ -79,6 +90,7 @@ function setBusy(p, v) {
 
 function logStatus() {
   const now = Date.now();
+  logger.info(MODULE, `Thứ tự ưu tiên ảnh: ${getOrder().join(' → ')}`);
   providers.forEach(p => {
     const st = inCooldown(p, now) ? `🔴 cooldown ${Math.round((p.lastFailed + p.cooldownMs - now) / 1000)}s` : '🟢 sẵn sàng';
     logger.info(MODULE, `[T${p.tier}] ${p.name}: ${st} | ok=${p.okCount} fail=${p.failCount}`);
@@ -88,7 +100,7 @@ function logStatus() {
 function getStatus() {
   const now = Date.now();
   return providers.map(p => ({
-    id: p.id, name: p.name, tier: p.tier, busy: p.busy,
+    id: p.id, name: p.name, kind: p.kind, model: p.model || '', tier: p.tier, busy: p.busy,
     cooldownSec: inCooldown(p, now) ? Math.round((p.lastFailed + p.cooldownMs - now) / 1000) : 0,
     ok: p.okCount, fails: p.failCount,
   }));
@@ -111,9 +123,9 @@ async function acquire() {
       continue;
     }
 
-    // Còn Cloudflare dùng được → chỉ dùng Cloudflare (chờ nếu đang bận), không tràn sang tier 2
-    const tier1 = usable.filter(p => p.tier === 1);
-    const pool = tier1.length ? tier1 : usable.filter(p => p.tier === 2);
+    // Chỉ dùng tier ưu tiên cao nhất còn khả dụng (chờ nếu đang bận), không tràn sang tier thấp hơn
+    const topTier = Math.min(...usable.map(p => p.tier));
+    const pool = usable.filter(p => p.tier === topTier);
     const free = pool.filter(p => !isBusy(p)).sort((a, b) => readyAt(a) - readyAt(b) || a.tier - b.tier);
     const best = free[0];
 
@@ -228,13 +240,17 @@ async function generateImage(prompt, localPath, width = 1024, height = 576) {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const p = await acquire();
     try {
-      logger.info(MODULE, `🎨 Đang tạo ảnh qua ${p.name}...`);
-      p.lastUsedMs = Date.now();
+      const modelTag = p.model || '-';
+      logger.info(MODULE, `🎨 [T${p.tier}] Đang tạo ảnh qua ${p.name} | model: ${modelTag}...`);
+      const t0 = Date.now();
+      p.lastUsedMs = t0;
       await run(p, prompt, localPath, width, height);
       markSuccess(p);
       p.lastUsedMs = Date.now();
-      logger.success(MODULE, `✅ ${p.name} OK`);
-      return { provider: p.name, localPath };
+      const elapsedMs = Date.now() - t0;
+      logger.success(MODULE, `✅ [T${p.tier}] ${p.name} | model: ${modelTag} OK (${(elapsedMs / 1000).toFixed(1)}s)`);
+      return { provider: p.name, providerId: p.id, kind: p.kind, model: p.model || '', tier: p.tier, elapsedMs, localPath };
+
     } catch (e) {
       lastErr = e;
       markFailed(p, e);
@@ -246,4 +262,4 @@ async function generateImage(prompt, localPath, width = 1024, height = 576) {
   throw new Error(`Tất cả providers thất bại. Lỗi cuối: ${lastErr ? lastErr.message : 'unknown'}`);
 }
 
-module.exports = { init, generateImage, getStatus, logStatus, reload };
+module.exports = { init, generateImage, getStatus, logStatus, reload, getOrder };

@@ -31,7 +31,7 @@ function flowError(msg, flags = {}) { return Object.assign(new Error(msg), flags
 function aspectFor(width, height) {
   if (width === height) return '1:1';
   if (width > height) return '16:9';
-  return '3:4';
+  return height / width >= 1.7 ? '9:16' : '3:4';
 }
 
 async function getBrowser() {

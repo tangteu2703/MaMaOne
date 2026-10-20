@@ -1875,6 +1875,9 @@ function loadPrompts() {
 loadPrompts();
 imageProviders.logStatus();
 
+// Story Video Studio: truyện (JSON/TXT) → voice + ảnh + sub + nhạc → video (trang: /studio)
+require('./src/studio').mount(app, { imageProviders, imageStyles, port: PORT });
+
 // Helper: gọi Gemini với auto retry + key rotation
 async function callGeminiForImage(prompt) {
   const { GoogleGenerativeAI } = require('@google/generative-ai');
