@@ -2,6 +2,7 @@
 import { api } from './api.js';
 import { initCreateForm } from './createForm.js';
 import { initJobList } from './jobList.js';
+import { initSplitter } from './splitter.js';
 import { $, h } from './utils.js';
 
 const SYSBAR_REFRESH_MS = 10000;
@@ -24,6 +25,7 @@ function renderSysbar(zerottsOnline, providerInfo) {
 }
 
 async function main() {
+  initSplitter();
   let jobs = null;
   const form = await initCreateForm({ onCreate: (job) => jobs.add(job) });
 

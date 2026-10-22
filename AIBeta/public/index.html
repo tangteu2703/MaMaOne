@@ -81,13 +81,16 @@
 
           <section class="field-group">
             <h3 class="field-group__title"><span class="step-no">3</span> Nhạc nền</h3>
-            <div class="row">
-              <div class="field grow">
-                <label for="musicSelect">Bản nhạc</label>
-                <select id="musicSelect"></select>
-              </div>
-              <label class="btn btn--icon" for="musicUpload" title="Tải nhạc lên">⬆<input type="file" id="musicUpload" accept="audio/*" hidden></label>
+            <div class="music-toolbar">
+              <span class="hint" id="musicCount">Đang quét workspace/music...</span>
+              <span class="music-toolbar__actions">
+                <button type="button" class="btn btn--sm" id="musicRefresh" title="Quét lại thư mục workspace/music">⟳ Quét lại</button>
+                <label class="btn btn--sm" for="musicUpload" title="Tải thêm nhạc vào workspace/music">⬆ Tải lên<input type="file" id="musicUpload" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac,.aac" multiple hidden></label>
+              </span>
             </div>
+            <ul class="music-list" id="musicList" aria-label="Danh sách nhạc nền"></ul>
+            <div class="music-playlist" id="musicPlaylist" hidden></div>
+            <audio id="musicPlayer" preload="none" hidden></audio>
             <div class="field" id="musicVolField">
               <label for="musicVolume">Âm lượng nhạc <b id="musicVolValue">18%</b></label>
               <input type="range" id="musicVolume" min="0" max="0.6" step="0.01" value="0.18">
@@ -105,6 +108,10 @@
           <section class="field-group">
             <h3 class="field-group__title"><span class="step-no">5</span> Kiểu vẽ ảnh</h3>
             <div class="chips" id="styleChips" role="radiogroup" aria-label="Kiểu vẽ"></div>
+            <div class="field">
+              <label for="imageProvider">Nguồn tạo ảnh</label>
+              <select id="imageProvider"></select>
+            </div>
             <p class="hint" id="providerHint"></p>
           </section>
 
@@ -130,6 +137,9 @@
           <button type="submit" class="btn btn--primary btn--block" id="createBtn" disabled>🚀 Tạo video</button>
         </form>
       </aside>
+
+      <!-- Thanh kéo chỉnh độ rộng 2 khung (double-click: về mặc định) -->
+      <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Kéo để chỉnh độ rộng khung" title="Kéo để chỉnh độ rộng · bấm đúp để về mặc định" tabindex="0"><span class="splitter__grip"></span></div>
 
       <!-- ===== DANH SÁCH TIẾN TRÌNH ===== -->
       <section class="jobs" aria-label="Danh sách video">

@@ -4,13 +4,17 @@ import { $, $$, h, toast, storage } from './utils.js';
 
 const STORAGE_KEY = 'studio.form.v1';
 const DEFAULTS = {
-  engine: 'zerotts', voiceName: '', preset: '', speed: 1, music: '', musicVolume: 0.18,
-  aspect: '16:9', style: 'anime', minSceneSec: 3, maxSceneSec: 6, transition: 'cut',
+  engine: 'zerotts', voiceName: '', preset: '', speed: 1, musicTracks: [], musicVolume: 0.18,
+  aspect: '16:9', style: 'anime', imageProvider: 'auto', minSceneSec: 3, maxSceneSec: 6, transition: 'cut',
   quality: 'normal', fps: 25, titlePosition: 'top', mergeShort: true, titleIntro: true, storyId: '',
 };
 
 export async function initCreateForm({ onCreate }) {
   const state = storage.get(STORAGE_KEY, DEFAULTS);
+  // Chuyển từ lựa chọn cũ (1 bài `music`) sang danh sách `musicTracks`
+  if (state.music && !(state.musicTracks || []).length) state.musicTracks = [state.music];
+  delete state.music;
+  if (!Array.isArray(state.musicTracks)) state.musicTracks = [];
   let data = await api.options();
   let stories = [];
   let activeStory = null;
@@ -23,8 +27,9 @@ export async function initCreateForm({ onCreate }) {
     speed: $('#speedRange'), speedValue: $('#speedValue'), speedField: $('#speedField'),
     previewBtn: $('#voicePreviewBtn'), previewAudio: $('#previewAudio'),
     ztHint: $('#zerottsHint'), ztHintText: $('#zerottsHintText'), ztStartBtn: $('#zerottsStartBtn'),
-    music: $('#musicSelect'), musicUpload: $('#musicUpload'), musicVol: $('#musicVolume'), musicVolValue: $('#musicVolValue'), musicVolField: $('#musicVolField'),
-    aspect: $('#aspectPicker'), styles: $('#styleChips'), providerHint: $('#providerHint'),
+    musicList: $('#musicList'), musicPlaylist: $('#musicPlaylist'), musicPlayer: $('#musicPlayer'), musicCount: $('#musicCount'), musicRefresh: $('#musicRefresh'),
+    musicUpload: $('#musicUpload'), musicVol: $('#musicVolume'), musicVolValue: $('#musicVolValue'), musicVolField: $('#musicVolField'),
+    aspect: $('#aspectPicker'), styles: $('#styleChips'), providerHint: $('#providerHint'), imageProvider: $('#imageProvider'),
     minScene: $('#minScene'), maxScene: $('#maxScene'), transition: $('#transition'), quality: $('#quality'),
     fps: $('#fps'), titlePosition: $('#titlePosition'), mergeShort: $('#mergeShort'), titleIntro: $('#titleIntro'),
   };
@@ -161,27 +166,98 @@ export async function initCreateForm({ onCreate }) {
     el.previewAudio.play().catch(() => toast('Không phát được mẫu giọng (ZeroTTS có online không?)', 'err'));
   });
 
-  // ── Nhạc nền ──────────────────────────────────────────────────────────
+  // ── Nhạc nền: quét workspace/music, nghe thử, chọn nhiều bài theo thứ tự ──
+  const fmtTrack = (sec) => (sec ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : '--:--');
+  const player = el.musicPlayer;
+  let playingName = '';
+
+  function toggleTrack(name) {
+    const i = state.musicTracks.indexOf(name);
+    if (i >= 0) state.musicTracks.splice(i, 1); else state.musicTracks.push(name);
+    persist(); renderMusic();
+  }
+  function moveTrack(i, delta) {
+    const j = i + delta;
+    if (j < 0 || j >= state.musicTracks.length) return;
+    [state.musicTracks[i], state.musicTracks[j]] = [state.musicTracks[j], state.musicTracks[i]];
+    persist(); renderMusic();
+  }
+  function playTrack(track) {
+    if (playingName === track.name && !player.paused) { player.pause(); return; }
+    if (playingName !== track.name) { playingName = track.name; player.src = track.url; }
+    player.play().catch(() => {
+      toast(`Không phát được "${track.name}" (file lỗi hoặc trình duyệt không hỗ trợ định dạng)`, 'err');
+      playingName = ''; renderMusic();
+    });
+  }
+  ['play', 'pause', 'ended'].forEach((ev) => player.addEventListener(ev, () => renderMusic()));
+
   function renderMusic() {
-    state.music = fill(el.music, [{ value: '', label: '— Không dùng nhạc nền —' }, ...data.music.map((m) => ({ value: m.name, label: `${m.name} (${m.sizeMB} MB)` }))], state.music);
+    const tracks = data.music || [];
+    const names = new Set(tracks.map((t) => t.name));
+    state.musicTracks = state.musicTracks.filter((n) => names.has(n)); // bỏ bài đã bị xoá khỏi thư mục
+    const totalSec = state.musicTracks.reduce((s, n) => s + ((tracks.find((t) => t.name === n) || {}).durationSec || 0), 0);
+
+    el.musicCount.textContent = tracks.length
+      ? `${tracks.length} bài trong workspace/music · đã chọn ${state.musicTracks.length}${state.musicTracks.length ? ` (${fmtTrack(totalSec)})` : ''}`
+      : 'Thư mục workspace/music trống — bấm "Tải lên" hoặc copy file nhạc vào rồi "Quét lại"';
+
+    el.musicList.replaceChildren(...tracks.map((t) => {
+      const order = state.musicTracks.indexOf(t.name);
+      const isPlaying = playingName === t.name && !player.paused;
+      return h('li', { class: `music-item${order >= 0 ? ' is-selected' : ''}${playingName === t.name ? ' is-playing' : ''}` },
+        h('button', {
+          type: 'button', class: 'music-item__play', title: isPlaying ? 'Tạm dừng' : 'Nghe thử',
+          onclick: () => playTrack(t),
+        }, isPlaying ? '⏸' : '▶'),
+        h('button', {
+          type: 'button', class: 'music-item__main', title: order >= 0 ? 'Bỏ chọn bài này' : 'Chọn để ghép vào video',
+          onclick: () => toggleTrack(t.name),
+        },
+        h('span', { class: 'music-item__name' }, t.name),
+        h('small', {}, `${fmtTrack(t.durationSec)} · ${t.sizeMB} MB`)),
+        h('span', { class: 'music-item__badge' }, order >= 0 ? String(order + 1) : '+'));
+    }));
+
+    el.musicPlaylist.hidden = !state.musicTracks.length;
+    el.musicPlaylist.replaceChildren(
+      h('div', { class: 'music-playlist__title' }, `🎵 Thứ tự phát trong video (${state.musicTracks.length} bài, lặp vòng + chuyển bài mượt)`),
+      ...state.musicTracks.map((name, i) => h('div', { class: 'music-chip' },
+        h('b', {}, String(i + 1)),
+        h('span', { title: name }, name),
+        h('button', { type: 'button', title: 'Lên trước', disabled: i === 0, onclick: () => moveTrack(i, -1) }, '▲'),
+        h('button', { type: 'button', title: 'Xuống sau', disabled: i === state.musicTracks.length - 1, onclick: () => moveTrack(i, 1) }, '▼'),
+        h('button', { type: 'button', title: 'Bỏ', onclick: () => toggleTrack(name) }, '✕'))));
+
+    const has = state.musicTracks.length > 0;
     el.musicVol.value = state.musicVolume;
     el.musicVolValue.textContent = `${Math.round(state.musicVolume * 100)}%`;
-    el.musicVolField.style.opacity = state.music ? 1 : 0.45;
-    el.musicVol.disabled = !state.music;
+    el.musicVolField.style.opacity = has ? 1 : 0.45;
+    el.musicVol.disabled = !has;
   }
-  el.music.addEventListener('change', () => { state.music = el.music.value; renderMusic(); persist(); });
+
+  async function rescanMusic() {
+    try {
+      data = { ...data, music: (await api.music()).music };
+      renderMusic(); persist();
+      toast(`Đã quét: ${data.music.length} bài nhạc`);
+    } catch (e) { toast(`Không quét được nhạc: ${e.message}`, 'err'); }
+  }
+  el.musicRefresh.addEventListener('click', rescanMusic);
   el.musicVol.addEventListener('input', () => { state.musicVolume = Number(el.musicVol.value); el.musicVolValue.textContent = `${Math.round(state.musicVolume * 100)}%`; persist(); });
   el.musicUpload.addEventListener('change', async () => {
-    const file = el.musicUpload.files[0];
+    const files = [...el.musicUpload.files];
     el.musicUpload.value = '';
-    if (!file) return;
-    try {
-      const res = await api.uploadMusic(file);
-      data = { ...data, music: (await api.options()).music };
-      state.music = res.filename;
-      renderMusic(); persist();
-      toast(`Đã tải nhạc: ${res.filename}`);
-    } catch (e) { toast(e.message, 'err'); }
+    if (!files.length) return;
+    const added = [];
+    for (const file of files) {
+      try { added.push((await api.uploadMusic(file)).filename); } catch (e) { toast(`${file.name}: ${e.message}`, 'err'); }
+    }
+    if (!added.length) return;
+    data = { ...data, music: (await api.music()).music };
+    added.forEach((n) => { if (!state.musicTracks.includes(n)) state.musicTracks.push(n); });
+    renderMusic(); persist();
+    toast(`Đã tải ${added.length} bài nhạc`);
   });
 
   // ── Khung hình, kiểu vẽ, nâng cao ─────────────────────────────────────
@@ -199,8 +275,23 @@ export async function initCreateForm({ onCreate }) {
       type: 'button', class: `chip${s.id === state.style ? ' is-active' : ''}`, dataset: { value: s.id },
       onclick: () => { state.style = s.id; renderStyles(); persist(); },
     }, s.label)));
-    el.providerHint.textContent = `Nguồn ảnh ưu tiên: ${data.providerOrder.join(' → ')} (log ghi rõ model từng ảnh)`;
   }
+
+  /** Combobox nguồn ảnh: tự động xoay tua / theo loại nguồn / chọn riêng 1 model */
+  function renderImageProvider() {
+    const choices = data.imageChoices || [{ value: 'auto', label: '🔄 Tự động xoay tua', group: '' }];
+    if (!choices.some((c) => c.value === state.imageProvider)) state.imageProvider = 'auto';
+    const groups = [...new Set(choices.map((c) => c.group))];
+    el.imageProvider.replaceChildren(...groups.map((g) => {
+      const opts = choices.filter((c) => c.group === g).map((c) => h('option', { value: c.value }, c.label));
+      return g ? h('optgroup', { label: g }, ...opts) : opts[0];
+    }).flat());
+    el.imageProvider.value = state.imageProvider;
+    el.providerHint.textContent = state.imageProvider === 'auto'
+      ? `Tự xoay tua theo ưu tiên: ${data.providerOrder.join(' → ')} (hết quota/lỗi thì tự chuyển nguồn kế tiếp, log ghi rõ model từng ảnh)`
+      : 'Chỉ dùng nguồn đã chọn — nếu hết quota sẽ chờ hồi (không tự chuyển sang nguồn khác). Có thể đổi nguồn rồi bấm Tiếp tục / Tạo lại ảnh lỗi.';
+  }
+  el.imageProvider.addEventListener('change', () => { state.imageProvider = el.imageProvider.value; renderImageProvider(); persist(); });
 
   const bindAdvanced = (node, key, parse = (v) => v) => {
     node.value = state[key];
@@ -248,14 +339,14 @@ export async function initCreateForm({ onCreate }) {
 
   // ── Khởi tạo ──────────────────────────────────────────────────────────
   $$('.aspect', el.aspect).forEach((b) => b.classList.toggle('is-active', b.dataset.value === state.aspect));
-  renderVoice(); renderMusic(); renderStyles();
+  renderVoice(); renderMusic(); renderStyles(); renderImageProvider();
   await loadStories();
   updateEstimate();
 
   return {
     getOptions,
     /** Làm mới dữ liệu động (ZeroTTS online, danh sách nhạc...) */
-    async refresh() { data = await api.options(); renderVoice(); renderMusic(); return data; },
+    async refresh() { data = await api.options(); renderVoice(); renderMusic(); renderImageProvider(); return data; },
     get data() { return data; },
   };
 }

@@ -34,10 +34,11 @@ export const api = {
   }),
   deleteStory: (id) => request(`/stories/${id}`, { method: 'DELETE' }),
 
+  music: () => request('/music'),
   async uploadMusic(file) {
-    const res = await fetch('/api/upload-music', {
+    const res = await fetch(`${BASE}/music`, {
       method: 'POST',
-      headers: { 'x-filename': safeFileName(file.name), 'Content-Type': file.type || 'audio/mpeg' },
+      headers: { 'x-filename': encodeURIComponent(safeFileName(file.name)), 'Content-Type': 'application/octet-stream' },
       body: file,
     });
     const data = await res.json().catch(() => ({}));

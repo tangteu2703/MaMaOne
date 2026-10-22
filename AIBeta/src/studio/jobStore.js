@@ -21,16 +21,25 @@ const clamp = (v, def, min, max) => {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
 };
 
+/** Danh sách nhạc nền có thứ tự (tên file trong workspace/music). Tương thích tuỳ chọn cũ `music` (1 bài). */
+function normalizeMusicTracks(o) {
+  const raw = Array.isArray(o.musicTracks) ? o.musicTracks : (o.music ? [o.music] : []);
+  return raw.map((t) => path.basename(String(t || ''))).filter(Boolean).slice(0, 50);
+}
+
 function normalizeOptions(o = {}) {
   const minScene = clamp(o.minSceneSec, 3, 1.5, 10);
+  const musicTracks = normalizeMusicTracks(o);
   return {
     aspect: o.aspect === '9:16' ? '9:16' : '16:9',
     style: String(o.style || 'anime'),
+    imageProvider: /^[a-z0-9_]{1,60}$/i.test(String(o.imageProvider || '')) ? String(o.imageProvider).toLowerCase() : 'auto',
     engine: o.engine === 'edgetts' ? 'edgetts' : 'zerotts',
     voiceName: String(o.voiceName || '').slice(0, 80),
     preset: String(o.preset || '').slice(0, 40),
     speed: clamp(o.speed, 1, 0.6, 1.8),
-    music: o.music ? path.basename(String(o.music)) : '',
+    music: musicTracks[0] || '',
+    musicTracks,
     musicVolume: clamp(o.musicVolume, 0.18, 0, 1),
     minSceneSec: minScene,
     maxSceneSec: Math.max(clamp(o.maxSceneSec, 6, 3, 15), minScene + 1),

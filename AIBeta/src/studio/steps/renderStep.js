@@ -17,7 +17,7 @@ async function run(job, signal) {
 
   const o = job.options;
   store.beginStep(job, STEP, { total: 0, done: 0, percent: 0, message: 'Chuẩn bị dựng video...' });
-  store.jlog(job, 'info', `🎬 Dựng video ${o.aspect} · ${o.fps}fps · ${o.quality === 'fast' ? '720p' : '1080p'} · chuyển cảnh: ${o.transition} · nhạc: ${o.music || 'không'}`);
+  store.jlog(job, 'info', `🎬 Dựng video ${o.aspect} · ${o.fps}fps · ${o.quality === 'fast' ? '720p' : '1080p'} · chuyển cảnh: ${o.transition} · nhạc: ${(o.musicTracks && o.musicTracks.length) ? o.musicTracks.join(' → ') : (o.music || 'không')}`);
 
   const t0 = Date.now();
   const output = await renderVideo(job, {
@@ -27,7 +27,7 @@ async function run(job, signal) {
 
   job.output = output;
   job.renderStale = false;
-  store.endStep(job, STEP, 'done', { message: `${fmtDuration(output.durationSec)} · ${output.sizeMB} MB · ${output.width}x${output.height}${output.withMusic ? ' · có nhạc nền' : ''}` });
+  store.endStep(job, STEP, 'done', { message: `${fmtDuration(output.durationSec)} · ${output.sizeMB} MB · ${output.width}x${output.height}${output.withMusic ? ` · nhạc nền (${output.musicTracks || 1} bài)` : ''}` });
   store.jlog(job, 'success', `🎬 Video hoàn tất: ${fmtDuration(output.durationSec)}, ${output.sizeMB} MB (dựng mất ${fmtDuration((Date.now() - t0) / 1000)})`);
   store.saveNow(job);
 }

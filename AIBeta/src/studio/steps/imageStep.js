@@ -33,7 +33,7 @@ function counts(job) {
 }
 
 /** Tạo 1 ảnh, trả về khi xong hoặc khi hết số lần thử */
-async function generateScene(job, sc, signal) {
+async function generateScene(job, sc, signal, selection = 'auto') {
   const dir = path.join(store.jobDir(job), 'images');
   fs.mkdirSync(dir, { recursive: true });
   const base = path.join(dir, `scene_${pad(sc.i)}`);
@@ -47,7 +47,7 @@ async function generateScene(job, sc, signal) {
     const tmp = `${base}.tmp`;
     try {
       sc.imageStatus = 'running';
-      const res = await deps.imageProviders.generateImage(prompt, tmp, w, h);
+      const res = await deps.imageProviders.generateImage(prompt, tmp, w, h, { provider: selection });
       throwIfAborted(signal);
       const ext = sniffImageExt(tmp);
       fs.renameSync(tmp, base + ext);
@@ -101,14 +101,20 @@ async function run(job, signal) {
   pending.forEach((s) => { if (s.imageStatus === 'error' || s.imageStatus === 'running') { s.imageStatus = 'pending'; s.attempts = 0; } });
   store.beginStep(job, STEP, { total, done: total - pending.length, percent: (total - pending.length) / total, message: 'Chuẩn bị...' });
 
+  // Nguồn ảnh do người dùng chọn (auto = xoay tua theo ưu tiên). Không khả dụng → quay về auto
+  let selection = String(job.options.imageProvider || 'auto');
+  if (!deps.imageProviders.hasProvider(selection)) {
+    store.jlog(job, 'warn', `⚠️ Nguồn ảnh "${selection}" không khả dụng (chưa cấu hình/bật trong .env) → dùng tự động xoay tua`);
+    selection = 'auto';
+  }
   const order = deps.imageProviders.getOrder().join(' → ');
-  store.jlog(job, 'info', `🖼️ Tạo ${pending.length}/${total} ảnh | style: ${job.options.style} | khung ${job.options.aspect} | ưu tiên: ${order}`);
+  store.jlog(job, 'info', `🖼️ Tạo ${pending.length}/${total} ảnh | style: ${job.options.style} | khung ${job.options.aspect} | nguồn: ${deps.imageProviders.describeSelection(selection)}${selection === 'auto' ? '' : ` | (thứ tự ưu tiên chung: ${order})`}`);
 
   const t0 = Date.now();
   let produced = 0;
   for (const sc of pending) {
     throwIfAborted(signal);
-    await generateScene(job, sc, signal);
+    await generateScene(job, sc, signal, selection);
     produced++;
     const { done, errors } = counts(job);
     const perImage = (Date.now() - t0) / 1000 / produced;

@@ -106,12 +106,44 @@ function getStatus() {
   }));
 }
 
+// ── Lựa chọn nguồn ảnh ────────────────────────────────────────────────
+// selection: 'auto' (xoay tua theo thứ tự ưu tiên) | kind ('cloudflare'|'flow'|'pollinations') | id provider cụ thể
+const KIND_LABEL = { cloudflare: 'Cloudflare Workers AI', flow: 'Google Flow', pollinations: 'Pollinations' };
+function normSelection(sel) { return String(sel || 'auto').toLowerCase(); }
+function matchesSelection(p, sel) {
+  sel = normSelection(sel);
+  return sel === 'auto' || sel === p.kind || sel === p.id;
+}
+/** Có provider nào khớp lựa chọn không (vd: chọn Flow nhưng FLOW_ENABLED=false → false) */
+function hasProvider(sel) { return providers.some(p => p.enabled && matchesSelection(p, sel)); }
+/** Tên hiển thị của lựa chọn (dùng cho log) */
+function describeSelection(sel) {
+  sel = normSelection(sel);
+  if (sel === 'auto') return `Tự động xoay tua (${getOrder().join(' → ')})`;
+  if (KIND_LABEL[sel]) return `${KIND_LABEL[sel]} (xoay tất cả)`;
+  const p = providers.find(x => x.id === sel);
+  return p ? p.name : sel;
+}
+/** Danh sách lựa chọn cho combobox: [{ value, label, group }] */
+function getChoices() {
+  const choices = [{ value: 'auto', group: '', label: `🔄 Tự động xoay tua (${getOrder().join(' → ')})` }];
+  const kinds = [...new Set(providers.map(p => p.kind))];
+  kinds.sort((a, b) => getOrder().indexOf(a) - getOrder().indexOf(b));
+  kinds.forEach(kind => {
+    const items = providers.filter(p => p.kind === kind);
+    const noun = kind === 'cloudflare' ? 'tài khoản' : 'model';
+    choices.push({ value: kind, group: 'Theo nguồn', label: `${KIND_LABEL[kind] || kind} — xoay ${items.length} ${noun}` });
+  });
+  providers.forEach(p => choices.push({ value: p.id, group: 'Chọn riêng 1 model / tài khoản', label: p.name }));
+  return choices;
+}
+
 // ── Chọn provider cho 1 request (đặt chỗ ngay để request khác không giành) ──
-async function acquire() {
+async function acquire(selection = 'auto') {
   const MAX_WAIT_COOLDOWN = 3 * 60 * 1000;
   for (;;) {
     const now = Date.now();
-    const enabled = providers.filter(p => p.enabled);
+    const enabled = providers.filter(p => p.enabled && matchesSelection(p, selection));
     const usable = enabled.filter(p => !inCooldown(p, now));
 
     if (!usable.length) {
@@ -234,11 +266,14 @@ function markSuccess(p) {
 }
 
 // ── MAIN ──────────────────────────────────────────────────────────────
-async function generateImage(prompt, localPath, width = 1024, height = 576) {
-  const maxAttempts = providers.filter(p => p.enabled).length + 2;
+// opts.provider: 'auto' | kind | id provider (xem matchesSelection). Mặc định 'auto' = hành vi cũ.
+async function generateImage(prompt, localPath, width = 1024, height = 576, opts = {}) {
+  const selection = normSelection(opts.provider);
+  if (!hasProvider(selection)) throw new Error(`Nguồn ảnh "${selection}" không khả dụng (chưa cấu hình/bật trong .env)`);
+  const maxAttempts = providers.filter(p => p.enabled && matchesSelection(p, selection)).length + 2;
   let lastErr = null;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const p = await acquire();
+    const p = await acquire(selection);
     try {
       const modelTag = p.model || '-';
       logger.info(MODULE, `🎨 [T${p.tier}] Đang tạo ảnh qua ${p.name} | model: ${modelTag}...`);
@@ -262,4 +297,4 @@ async function generateImage(prompt, localPath, width = 1024, height = 576) {
   throw new Error(`Tất cả providers thất bại. Lỗi cuối: ${lastErr ? lastErr.message : 'unknown'}`);
 }
 
-module.exports = { init, generateImage, getStatus, logStatus, reload, getOrder };
+module.exports = { init, generateImage, getStatus, logStatus, reload, getOrder, getChoices, hasProvider, describeSelection };

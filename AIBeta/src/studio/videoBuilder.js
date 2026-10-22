@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const config = require('../../config/config');
-const { runFfmpeg, throwIfAborted, pad } = require('./mediaUtils');
+const { runFfmpeg, throwIfAborted, pad, probeDuration } = require('./mediaUtils');
 const { assignMotions, zoompanExpr } = require('./motions');
 
 const even = (n) => Math.round(n / 2) * 2;
@@ -141,6 +141,49 @@ async function renderClips(clips, ctx, onProgress) {
   if (failed) throw failed;
 }
 
+/**
+ * Lập playlist nhạc nền: các bài theo thứ tự chọn, lặp vòng cho đủ dài video.
+ * Các bài nối nhau bằng crossfade (nếu mọi bài đều > 10s).
+ * @returns {Promise<null|{seq:Array<{file:string,name:string,dur:number}>, xf:number, unique:number}>}
+ */
+async function planMusic(tracks, totalSec) {
+  const items = [];
+  for (const name of tracks) {
+    const file = path.join(config.paths.music, path.basename(name));
+    if (!fs.existsSync(file)) continue;
+    const dur = await probeDuration(file);
+    if (dur > 1) items.push({ file, name, dur });
+  }
+  if (!items.length) return null;
+  const xf = items.every((i) => i.dur > 10) ? 3 : 0;
+  const seq = [];
+  let covered = 0;
+  while (covered < totalSec + 1 && seq.length < 120) {
+    const it = items[seq.length % items.length];
+    covered += it.dur - (seq.length ? xf : 0);
+    seq.push(it);
+  }
+  return { seq, xf, unique: items.length };
+}
+
+/** Các nhãn filter_complex ghép playlist thành 1 luồng [mc]; firstIdx = chỉ số input đầu tiên của nhạc */
+function musicFilters(plan, firstIdx) {
+  const { seq, xf } = plan;
+  const f = seq.map((_, k) => `[${firstIdx + k}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[m${k}]`);
+  if (seq.length === 1) { f.push('[m0]anull[mc]'); return f; }
+  if (xf > 0) {
+    let prev = 'm0';
+    for (let k = 1; k < seq.length; k++) {
+      const out = k === seq.length - 1 ? 'mc' : `x${k}`;
+      f.push(`[${prev}][m${k}]acrossfade=d=${xf}:c1=tri:c2=tri[${out}]`);
+      prev = out;
+    }
+  } else {
+    f.push(`${seq.map((_, k) => `[m${k}]`).join('')}concat=n=${seq.length}:v=0:a=1[mc]`);
+  }
+  return f;
+}
+
 /** Ghép tất cả: clip + voice + nhạc nền + ASS (sub + tiêu đề) → mp4 */
 async function muxFinal(job, ctx, clips, videoSec, onProgress) {
   const { dir, signal, fps } = ctx;
@@ -150,20 +193,22 @@ async function muxFinal(job, ctx, clips, videoSec, onProgress) {
   fs.writeFileSync(path.join(dir, 'voice.txt'), job.segments.map((s) => `file '${s.voiceFile}'`).join('\n'), 'utf8');
 
   const totalSec = Math.min(videoSec, job.totalSec) || videoSec;
-  const musicFile = o.music ? path.join(config.paths.music, path.basename(o.music)) : null;
-  const hasMusic = !!(musicFile && fs.existsSync(musicFile));
+  const tracks = Array.isArray(o.musicTracks) ? o.musicTracks : (o.music ? [o.music] : []);
+  const musicPlan = tracks.length ? await planMusic(tracks, totalSec) : null;
+  const hasMusic = !!musicPlan;
   const hasAss = fs.existsSync(path.join(dir, 'sub.ass'));
   const hasFonts = fs.existsSync(path.join(dir, 'fonts'));
 
   const inputs = ['-f', 'concat', '-safe', '0', '-i', 'clips.txt', '-f', 'concat', '-safe', '0', '-i', 'voice.txt'];
-  if (hasMusic) inputs.push('-stream_loop', '-1', '-i', musicFile);
+  if (hasMusic) musicPlan.seq.forEach((it) => inputs.push('-i', it.file));
 
   const vChain = [hasAss ? `ass=sub.ass${hasFonts ? ':fontsdir=fonts' : ''}` : null, 'format=yuv420p'].filter(Boolean).join(',');
   const parts = [`[0:v]${vChain}[v]`];
   if (hasMusic) {
     const vol = Math.max(0, Math.min(1, Number(o.musicVolume))).toFixed(3);
     parts.push('[1:a]aresample=44100[a1]');
-    parts.push(`[2:a]aresample=44100,volume=${vol},afade=t=in:st=0:d=2,afade=t=out:st=${Math.max(0, totalSec - 3).toFixed(2)}:d=3[m]`);
+    parts.push(...musicFilters(musicPlan, 2));
+    parts.push(`[mc]volume=${vol},afade=t=in:st=0:d=2,afade=t=out:st=${Math.max(0, totalSec - 3).toFixed(2)}:d=3[m]`);
     parts.push('[a1][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]');
   } else {
     parts.push('[1:a]aresample=44100[a]');
@@ -183,7 +228,7 @@ async function muxFinal(job, ctx, clips, videoSec, onProgress) {
   ];
   await runFfmpeg(args, { cwd: dir, signal, label: 'ghép video', onProgress: (t) => onProgress(Math.min(1, t / totalSec)) });
   fs.renameSync(tmpOut, finalOut);
-  return { file: 'final.mp4', durationSec: totalSec, sizeMB: Math.round((fs.statSync(finalOut).size / 1048576) * 10) / 10, withMusic: hasMusic };
+  return { file: 'final.mp4', durationSec: totalSec, sizeMB: Math.round((fs.statSync(finalOut).size / 1048576) * 10) / 10, withMusic: hasMusic, musicTracks: hasMusic ? musicPlan.unique : 0 };
 }
 
 /**

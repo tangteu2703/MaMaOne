@@ -80,6 +80,13 @@ function pause(job) {
 
 const isBusy = (job) => active === job || queue.includes(job);
 
+/** Đổi nguồn ảnh cho các ảnh còn lại của job (không áp dụng khi job đang chạy/xếp hàng) */
+function setImageProvider(job, value) {
+  if (!value || isBusy(job)) return;
+  job.options.imageProvider = store.normalizeOptions({ ...job.options, imageProvider: value }).imageProvider;
+  store.save(job);
+}
+
 /** Tiếp tục: các bước đã xong sẽ tự được bỏ qua */
 function resume(job) {
   if (isBusy(job)) return false;
@@ -99,7 +106,7 @@ function retryErrorImages(job) {
 /** Dựng lại video với tuỳ chọn hiển thị mới (nhạc, tiêu đề, chuyển cảnh...) mà không tạo lại voice/ảnh */
 function rerender(job, patch = {}) {
   if (isBusy(job) || job.steps.images.status === 'pending') return false;
-  const allowed = ['music', 'musicVolume', 'titlePosition', 'titleIntro', 'transition', 'fps', 'quality'];
+  const allowed = ['music', 'musicTracks', 'musicVolume', 'titlePosition', 'titleIntro', 'transition', 'fps', 'quality'];
   const merged = store.normalizeOptions({ ...job.options, ...Object.fromEntries(Object.entries(patch).filter(([k]) => allowed.includes(k))) });
   allowed.forEach((k) => { job.options[k] = merged[k]; });
   job.renderStale = true;
@@ -116,4 +123,4 @@ function remove(job) {
   wait();
 }
 
-module.exports = { enqueue, pause, resume, retryErrorImages, rerender, remove, isBusy };
+module.exports = { enqueue, pause, resume, retryErrorImages, rerender, remove, isBusy, setImageProvider };

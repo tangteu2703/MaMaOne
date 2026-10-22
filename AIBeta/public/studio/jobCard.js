@@ -90,8 +90,14 @@ export function createJobCard(initial, { getFormOptions, onDeleted }) {
     try { await fn(); } catch (err) { toast(`${label}: ${err.message}`, 'err'); } finally { btn.disabled = false; }
   };
   const btnPause = h('button', { class: 'btn btn--sm', onclick: run('Tạm dừng', () => api.jobAction(current.id, 'pause')) }, '⏸ Tạm dừng');
-  const btnResume = h('button', { class: 'btn btn--sm', onclick: run('Tiếp tục', () => api.jobAction(current.id, 'resume')) }, '▶ Tiếp tục');
-  const btnRetry = h('button', { class: 'btn btn--sm', onclick: run('Tạo lại ảnh lỗi', () => api.jobAction(current.id, 'retry-images')) }, '🔁 Tạo lại ảnh lỗi');
+  const btnResume = h('button', {
+    class: 'btn btn--sm', title: 'Tiếp tục — các ảnh còn lại dùng "Nguồn tạo ảnh" đang chọn ở form',
+    onclick: run('Tiếp tục', () => api.jobAction(current.id, 'resume', { imageProvider: getFormOptions().imageProvider })),
+  }, '▶ Tiếp tục');
+  const btnRetry = h('button', {
+    class: 'btn btn--sm', title: 'Tạo lại ảnh lỗi bằng "Nguồn tạo ảnh" đang chọn ở form',
+    onclick: run('Tạo lại ảnh lỗi', () => api.jobAction(current.id, 'retry-images', { imageProvider: getFormOptions().imageProvider })),
+  }, '🔁 Tạo lại ảnh lỗi');
   const btnRerender = h('button', {
     class: 'btn btn--sm', title: 'Dựng lại video với nhạc/tiêu đề/chuyển cảnh đang chọn ở form (không tạo lại voice, ảnh)',
     onclick: run('Dựng lại', () => api.jobAction(current.id, 'rerender', { options: getFormOptions() })),
@@ -136,8 +142,9 @@ export function createJobCard(initial, { getFormOptions, onDeleted }) {
     const o = job.options;
     const tags = [
       o.aspect, o.style === 'none' ? 'giữ prompt' : o.style,
+      `ảnh: ${!o.imageProvider || o.imageProvider === 'auto' ? 'xoay tua' : o.imageProvider}`,
       `${o.engine === 'zerotts' ? 'ZeroTTS' : 'Edge-TTS'}${o.voiceName ? ` · ${o.voiceName}` : ''}`,
-      o.music ? `♪ ${o.music}` : 'không nhạc',
+      (o.musicTracks && o.musicTracks.length > 1) ? `♪ ${o.musicTracks.length} bài nhạc nền` : (o.music ? `♪ ${o.music}` : 'không nhạc'),
       job.counts.segments ? `${job.counts.segments} đoạn` : null,
       job.counts.scenes ? `${job.counts.scenes} ảnh` : null,
       job.totalSec ? `voice ${fmtDuration(job.totalSec)}` : null,
@@ -194,7 +201,7 @@ export function createJobCard(initial, { getFormOptions, onDeleted }) {
     download.href = out.url;
     filePath.textContent = out.path || '';
     download.download = `${job.title.replace(/[\\/:*?"<>|]+/g, '').slice(0, 80) || 'video'}.mp4`;
-    resultInfo.textContent = `${fmtDuration(out.durationSec)} · ${out.sizeMB} MB · ${out.width}x${out.height}${out.withMusic ? ' · có nhạc nền' : ''}`;
+    resultInfo.textContent = `${fmtDuration(out.durationSec)} · ${out.sizeMB} MB · ${out.width}x${out.height}${out.withMusic ? ` · nhạc nền${out.musicTracks > 1 ? ` (${out.musicTracks} bài)` : ''}` : ''}`;
   }
 
   function renderActions(job) {

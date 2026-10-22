@@ -10,6 +10,7 @@ const deps = require('./deps');
 const store = require('./jobStore');
 const pipeline = require('./pipeline');
 const { parseStory } = require('./storySpec');
+const { probeDuration } = require('./mediaUtils');
 const { buildPrompt } = require('./steps/imageStep');
 
 const MUSIC_EXT = /\.(mp3|wav|m4a|ogg|flac|aac)$/i;
@@ -38,12 +39,26 @@ async function loadZeroTTSVoices() {
   }
 }
 
-function listMusic() {
-  if (!fs.existsSync(config.paths.music)) return [];
-  return fs.readdirSync(config.paths.music).filter((f) => MUSIC_EXT.test(f)).map((f) => ({
-    name: f,
-    sizeMB: Math.round((fs.statSync(path.join(config.paths.music, f)).size / 1048576) * 10) / 10,
-    url: `/music/${encodeURIComponent(f)}`,
+const durationCache = new Map(); // file -> { mtimeMs, dur }
+
+/** Quét workspace/music: tên, dung lượng, thời lượng (cache theo mtime), URL để nghe thử */
+async function listMusic() {
+  if (!fs.existsSync(config.paths.music)) fs.mkdirSync(config.paths.music, { recursive: true });
+  const files = fs.readdirSync(config.paths.music).filter((f) => MUSIC_EXT.test(f)).sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  return Promise.all(files.map(async (f) => {
+    const full = path.join(config.paths.music, f);
+    const st = fs.statSync(full);
+    let cached = durationCache.get(full);
+    if (!cached || cached.mtimeMs !== st.mtimeMs) {
+      cached = { mtimeMs: st.mtimeMs, dur: await probeDuration(full) };
+      durationCache.set(full, cached);
+    }
+    return {
+      name: f,
+      sizeMB: Math.round((st.size / 1048576) * 10) / 10,
+      durationSec: Math.round(cached.dur),
+      url: `/music/${encodeURIComponent(f)}`,
+    };
   }));
 }
 
@@ -68,8 +83,9 @@ function createRouter() {
       zerotts: { online: zt.online, voices: zt.voices },
       edgeVoices: EDGE_VOICES,
       presets: PRESETS,
-      music: listMusic(),
+      music: await listMusic(),
       providerOrder: deps.imageProviders.getOrder(),
+      imageChoices: deps.imageProviders.getChoices(),
     });
   });
 
@@ -98,7 +114,20 @@ function createRouter() {
 
   router.delete('/stories/:id', (req, res) => { store.deleteStory(req.params.id); res.json({ success: true }); });
 
-  router.get('/music', (req, res) => res.json({ success: true, music: listMusic() }));
+  router.get('/music', async (req, res) => res.json({ success: true, music: await listMusic() }));
+
+  // Upload nhạc (body thô, chấp nhận mọi content-type: trình duyệt hay gửi rỗng/octet-stream cho một số file âm thanh)
+  router.post('/music', express.raw({ type: () => true, limit: '300mb' }), (req, res) => {
+    const raw = String(req.headers['x-filename'] || '');
+    let name = raw;
+    try { name = decodeURIComponent(raw); } catch { /* giữ nguyên */ }
+    name = path.basename(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (!MUSIC_EXT.test(name)) return fail(res, 400, 'Chỉ nhận file mp3, wav, m4a, ogg, flac, aac');
+    if (!Buffer.isBuffer(req.body) || req.body.length < 1000) return fail(res, 400, 'File rỗng hoặc không đọc được');
+    fs.mkdirSync(config.paths.music, { recursive: true });
+    fs.writeFileSync(path.join(config.paths.music, name), req.body);
+    return res.json({ success: true, filename: name });
+  });
 
   // ── Jobs ────────────────────────────────────────────────────────────
   router.get('/jobs', (req, res) => res.json({ success: true, jobs: store.listJobs().map(store.summary) }));
@@ -151,8 +180,9 @@ function createRouter() {
     res.json({ success: true, job: store.summary(job) });
   }));
   action('pause', (job) => pipeline.pause(job));
-  action('resume', (job) => pipeline.resume(job));
-  action('retry-images', (job) => pipeline.retryErrorImages(job));
+  // Tiếp tục / tạo lại ảnh lỗi có thể kèm imageProvider mới (vd: Cloudflare hết quota → đổi sang Flow)
+  action('resume', (job, req) => { pipeline.setImageProvider(job, (req.body || {}).imageProvider); return pipeline.resume(job); });
+  action('retry-images', (job, req) => { pipeline.setImageProvider(job, (req.body || {}).imageProvider); return pipeline.retryErrorImages(job); });
   action('rerender', (job, req) => pipeline.rerender(job, (req.body || {}).options));
 
   router.delete('/jobs/:id', withJob((job, req, res) => { pipeline.remove(job); res.json({ success: true }); }));
